@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Blackjack Card Counting Simulator</title>
+  <meta name="description" content="Practice blackjack card counting with a realistic Hi-Lo simulator featuring chip betting and session analytics.">
+
+  <!-- PWA / iOS App Meta -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Blackjack">
+  <meta name="theme-color" content="#0a0e1a">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ==================== TOP BAR ==================== -->
+  <header id="top-bar">
+    <div id="top-bar-left">
+      <h1 id="game-title"><span class="title-suit">♠</span> BLACKJACK</h1>
+    </div>
+    <div id="top-bar-center">
+      <div id="bankroll-display">
+        <span id="bankroll-label">BANKROLL</span>
+        <span id="bankroll-amount">$1,000</span>
+      </div>
+    </div>
+    <div id="top-bar-right">
+      <button id="toggle-counting" class="header-btn" title="Toggle card counting panel">
+        <span class="btn-icon">🃏</span><span class="btn-text">Count</span>
+      </button>
+      <button id="toggle-strategy" class="header-btn" title="Toggle basic strategy advisor">
+        <span class="btn-icon">📋</span><span class="btn-text">Strategy</span>
+      </button>
+      <button id="toggle-analytics" class="header-btn" title="Toggle session analytics">
+        <span class="btn-icon">📊</span><span class="btn-text">Stats</span>
+      </button>
+      <button id="open-settings-btn" class="header-btn" title="Bet settings">
+        <span class="btn-icon">⚙️</span><span class="btn-text">Settings</span>
+      </button>
+      <button id="new-shoe-btn" class="header-btn" title="Shuffle a new shoe">
+        <span class="btn-icon">🔄</span><span class="btn-text">New Shoe</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== SETTINGS MODAL ==================== -->
+  <div id="settings-overlay" class="modal-overlay hidden">
+    <div id="settings-modal" class="modal">
+      <div class="modal-header">
+        <h2>⚙️ Bet Settings</h2>
+        <button id="close-settings-btn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="setting-group">
+          <label for="setting-min-bet">Minimum Bet</label>
+          <div class="setting-input-row">
+            <span class="input-prefix">$</span>
+            <input type="number" id="setting-min-bet" min="1" max="10000" value="5" step="1">
+          </div>
+          <span class="setting-hint">Table minimum — also the base unit for optimal bet sizing</span>
+        </div>
+        <div class="setting-group">
+          <label for="setting-max-bet">Maximum Bet</label>
+          <div class="setting-input-row">
+            <span class="input-prefix">$</span>
+            <input type="number" id="setting-max-bet" min="1" max="100000" value="500" step="1">
+          </div>
+          <span class="setting-hint">Table maximum — optimal bet will never exceed this</span>
+        </div>
+        <div class="setting-group">
+          <label for="setting-bankroll">Starting Bankroll</label>
+          <div class="setting-input-row">
+            <span class="input-prefix">$</span>
+            <input type="number" id="setting-bankroll" min="10" max="1000000" value="1000" step="10">
+          </div>
+          <span class="setting-hint">Resets bankroll and session stats</span>
+        </div>
+
+        <div class="setting-divider"></div>
+
+        <div class="setting-group">
+          <label>Optimal Bet Spread (Hi-Lo)</label>
+          <div id="bet-spread-preview">
+            <div class="spread-row"><span class="spread-tc">TC ≤ 1</span><span class="spread-bet" id="spread-1">$5</span><span class="spread-units">1 unit</span></div>
+            <div class="spread-row"><span class="spread-tc">TC 2</span><span class="spread-bet" id="spread-2">$10</span><span class="spread-units">2 units</span></div>
+            <div class="spread-row"><span class="spread-tc">TC 3</span><span class="spread-bet" id="spread-3">$20</span><span class="spread-units">4 units</span></div>
+            <div class="spread-row"><span class="spread-tc">TC 4</span><span class="spread-bet" id="spread-4">$40</span><span class="spread-units">8 units</span></div>
+            <div class="spread-row"><span class="spread-tc">TC ≥ 5</span><span class="spread-bet" id="spread-5">$60</span><span class="spread-units">12 units</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="settings-save-btn" class="bet-btn primary">APPLY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN LAYOUT ==================== -->
+  <main id="main-layout">
+
+    <!-- ========== GAME TABLE ========== -->
+    <section id="game-table">
+
+      <!-- Shoe progress indicator -->
+      <div id="shoe-indicator">
+        <div id="shoe-bar">
+          <div id="shoe-progress"></div>
+        </div>
+        <span id="shoe-label">Shoe: 312 cards</span>
+      </div>
+
+      <!-- Dealer Area -->
+      <div id="dealer-area">
+        <span id="dealer-label" class="area-label">DEALER</span>
+        <div id="dealer-cards"></div>
+        <div id="dealer-score" class="score-badge hidden"></div>
+      </div>
+
+      <!-- Game Message Overlay -->
+      <div id="game-message" class="hidden"></div>
+
+      <!-- Player Area -->
+      <div id="player-area">
+        <div id="player-hands-container">
+          <div class="hand-container active" data-hand-index="0">
+            <div class="player-cards" id="player-cards-0"></div>
+            <div class="score-badge hidden" id="player-score-0"></div>
+          </div>
+        </div>
+        <span id="player-label" class="area-label">PLAYER</span>
+      </div>
+
+      <!-- Betting Section (visible during betting phase) -->
+      <div id="betting-section">
+        <div id="bet-display">
+          <div id="bet-chips-visual"></div>
+          <div id="bet-info">
+            <span id="bet-label">BET</span>
+            <span id="bet-amount">$0</span>
+          </div>
+        </div>
+
+        <div id="chip-tray">
+          <button class="chip chip-1" data-value="1" id="chip-1">
+            <span class="chip-inner"><span class="chip-value">1</span></span>
+          </button>
+          <button class="chip chip-5" data-value="5" id="chip-5">
+            <span class="chip-inner"><span class="chip-value">5</span></span>
+          </button>
+          <button class="chip chip-25" data-value="25" id="chip-25">
+            <span class="chip-inner"><span class="chip-value">25</span></span>
+          </button>
+          <button class="chip chip-100" data-value="100" id="chip-100">
+            <span class="chip-inner"><span class="chip-value">100</span></span>
+          </button>
+          <button class="chip chip-500" data-value="500" id="chip-500">
+            <span class="chip-inner"><span class="chip-value">500</span></span>
+          </button>
+        </div>
+
+        <div id="bet-actions">
+          <button id="clear-bet-btn" class="bet-btn">CLEAR</button>
+          <button id="repeat-bet-btn" class="bet-btn">REPEAT</button>
+          <button id="deal-btn" class="bet-btn primary">DEAL</button>
+        </div>
+      </div>
+
+      <!-- Strategy Advisor (floating overlay, togglable) -->
+      <div id="strategy-advisor" class="hidden">
+        <div id="strategy-advisor-label">BASIC STRATEGY</div>
+        <div id="strategy-advisor-action">—</div>
+        <div id="strategy-advisor-detail"></div>
+      </div>
+
+      <!-- Action Buttons (visible during playing phase) -->
+      <div id="action-buttons" class="hidden">
+        <button id="btn-hit" class="action-btn hit">HIT</button>
+        <button id="btn-stand" class="action-btn stand">STAND</button>
+        <button id="btn-double" class="action-btn double">DOUBLE</button>
+        <button id="btn-split" class="action-btn split">SPLIT</button>
+        <button id="btn-insurance" class="action-btn insurance">INSURANCE</button>
+      </div>
+
+    </section>
+
+    <!-- ========== CARD COUNTING PANEL (Right Sidebar) ========== -->
+    <aside id="counting-panel" class="side-panel hidden">
+      <div class="panel-header">
+        <h2>Card Count</h2>
+        <span class="system-badge">Hi-Lo</span>
+      </div>
+      <div class="panel-body">
+        <!-- Primary counts -->
+        <div class="count-row primary-counts">
+          <div class="count-stat primary">
+            <span class="stat-label">Running Count</span>
+            <span class="stat-value" id="running-count">0</span>
+          </div>
+          <div class="count-stat primary">
+            <span class="stat-label">True Count</span>
+            <span class="stat-value" id="true-count">0.0</span>
+          </div>
+        </div>
+
+        <!-- Deck info -->
+        <div class="count-row">
+          <div class="count-stat">
+            <span class="stat-label">Cards Left</span>
+            <span class="stat-value" id="cards-remaining">312</span>
+          </div>
+          <div class="count-stat">
+            <span class="stat-label">Decks Left</span>
+            <span class="stat-value" id="decks-remaining">6.0</span>
+          </div>
+          <div class="count-stat">
+            <span class="stat-label">Penetration</span>
+            <span class="stat-value" id="deck-penetration">0%</span>
+          </div>
+        </div>
+
+        <!-- Suggested bet -->
+        <div class="count-row suggested-row">
+          <div class="count-stat suggested">
+            <span class="stat-label">Suggested Bet</span>
+            <span class="stat-value" id="suggested-bet">$5</span>
+          </div>
+          <div class="count-stat edge">
+            <span class="stat-label">Player Edge</span>
+            <span class="stat-value" id="player-edge">-0.50%</span>
+          </div>
+        </div>
+
+        <!-- Card distribution grid -->
+        <div id="card-distribution">
+          <h3>Cards Seen</h3>
+          <div id="card-grid">
+            <!-- Populated dynamically by JS -->
+          </div>
+        </div>
+
+        <!-- Hi-Lo legend -->
+        <div id="count-legend">
+          <div class="legend-item legend-plus">2-6: +1</div>
+          <div class="legend-item legend-zero">7-9: 0</div>
+          <div class="legend-item legend-minus">10-A: −1</div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ==================== ANALYTICS PANEL (Bottom) ==================== -->
+  <section id="analytics-panel" class="bottom-panel hidden">
+    <div class="panel-header">
+      <h2>Session Analytics</h2>
+    </div>
+    <div class="panel-body">
+      <div id="stats-grid">
+        <div class="stat-card">
+          <span class="stat-card-value" id="stat-hands">0</span>
+          <span class="stat-card-label">Hands Played</span>
+        </div>
+        <div class="stat-card win">
+          <span class="stat-card-value" id="stat-wins">0</span>
+          <span class="stat-card-label">Wins</span>
+        </div>
+        <div class="stat-card loss">
+          <span class="stat-card-value" id="stat-losses">0</span>
+          <span class="stat-card-label">Losses</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card-value" id="stat-pushes">0</span>
+          <span class="stat-card-label">Pushes</span>
+        </div>
+        <div class="stat-card special">
+          <span class="stat-card-value" id="stat-blackjacks">0</span>
+          <span class="stat-card-label">Blackjacks</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card-value" id="stat-winrate">0%</span>
+          <span class="stat-card-label">Win Rate</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-card-value" id="stat-wagered">$0</span>
+          <span class="stat-card-label">Total Wagered</span>
+        </div>
+        <div class="stat-card pnl">
+          <span class="stat-card-value" id="stat-pnl">$0</span>
+          <span class="stat-card-label">Net P&amp;L</span>
+        </div>
+      </div>
+      <div id="chart-container">
+        <h3>Bankroll Over Session</h3>
+        <canvas id="bankroll-chart" width="800" height="250"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== SCRIPTS ==================== -->
+  <script src="counting.js"></script>
+  <script src="analytics.js"></script>
+  <script src="betting.js"></script>
+  <script src="strategy.js"></script>
+  <script src="game.js"></script>
+  <script src="app.js"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+  </script>
+
+</body>
+</html>
