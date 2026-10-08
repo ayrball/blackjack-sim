@@ -37,8 +37,13 @@ class BettingSystem {
     return true;
   }
 
+  // Staged bet meets the table minimum and is covered by the bankroll
+  isBetValid() {
+    return this.stagedBet >= this.minBet && this.stagedBet > 0 && this.stagedBet <= this.bankroll;
+  }
+
   placeBet() {
-    if (this.stagedBet === 0 || this.stagedBet > this.bankroll) return false;
+    if (!this.isBetValid()) return false;
     this.bankroll -= this.stagedBet;
     this.lastBet = this.stagedBet;
     return this.stagedBet;
@@ -57,3 +62,13 @@ class BettingSystem {
   }
 }
 window.BettingSystem = BettingSystem;
+
+// "$1,002" for whole amounts, "$1,002.50" when a 3:2 payout leaves cents
+function formatMoney(amount) {
+  const cents = !Number.isInteger(amount);
+  return '$' + amount.toLocaleString('en-US', {
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: 2
+  });
+}
+window.formatMoney = formatMoney;

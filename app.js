@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     currentHandIndex: 0,
     handBets: [],
     insuranceBet: 0,
+    awaitingInsurance: false,
+    actionLock: false,
     strategyEnabled: false,
     minBet: 5,
     maxBet: 500,
@@ -93,29 +95,33 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('deal-btn').addEventListener('click', () => {
-      if (state.phase === 'betting' && betting.getCurrentBet() > 0) {
+      if (state.phase === 'betting' && betting.isBetValid()) {
         startHand();
       }
     });
 
     document.getElementById('btn-hit').addEventListener('click', () => {
-      if (state.phase === 'playing') playerHit();
+      if (canPlayHand()) playerHit();
     });
 
     document.getElementById('btn-stand').addEventListener('click', () => {
-      if (state.phase === 'playing') playerStand();
+      if (canPlayHand()) playerStand();
     });
 
     document.getElementById('btn-double').addEventListener('click', () => {
-      if (state.phase === 'playing') playerDouble();
+      if (canPlayHand()) playerDouble();
     });
 
     document.getElementById('btn-split').addEventListener('click', () => {
-      if (state.phase === 'playing') playerSplit();
+      if (canPlayHand()) playerSplit();
     });
 
     document.getElementById('btn-insurance').addEventListener('click', () => {
-      if (state.phase === 'playing') playerInsurance();
+      if (state.phase === 'playing' && state.awaitingInsurance) playerInsurance();
+    });
+
+    document.getElementById('btn-no-insurance').addEventListener('click', () => {
+      if (state.phase === 'playing' && state.awaitingInsurance) finishInsuranceDecision();
     });
     
     document.getElementById('toggle-counting').addEventListener('click', (e) => {
@@ -142,16 +148,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('new-shoe-btn').addEventListener('click', () => {
+      if (!requireBettingPhase()) return;
       game.initShoe();
       counter.reset();
       updateCountingPanel();
       updateShoeIndicator();
-      showMessage('New Shoe Shuffled', 'info');
-      setTimeout(hideMessage, 1500);
+      flashMessage('New Shoe Shuffled');
     });
 
     // Settings modal
     document.getElementById('open-settings-btn').addEventListener('click', () => {
+      if (!requireBettingPhase()) return;
       document.getElementById('setting-min-bet').value = state.minBet;
       document.getElementById('setting-max-bet').value = state.maxBet;
       document.getElementById('setting-bankroll').value = state.startingBankroll;
@@ -174,6 +181,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('setting-max-bet').addEventListener('input', updateBetSpreadPreview);
 
     document.getElementById('settings-save-btn').addEventListener('click', () => {
+      if (!requireBettingPhase()) {
+        document.getElementById('settings-overlay').classList.add('hidden');
+        return;
+      }
       const newMin = Math.max(1, parseInt(document.getElementById('setting-min-bet').value) || 5);
       const newMax = Math.max(newMin, parseInt(document.getElementById('setting-max-bet').value) || 500);
       const newBankroll = Math.max(newMin, parseInt(document.getElementById('setting-bankroll').value) || 1000);
@@ -195,9 +206,18 @@ document.addEventListener('DOMContentLoaded', () => {
       updateShoeIndicator();
 
       document.getElementById('settings-overlay').classList.add('hidden');
-      showMessage('Settings Applied', 'info');
-      setTimeout(hideMessage, 1500);
+      flashMessage('Settings Applied');
     });
+  }
+
+  // Shoe and bankroll changes are only allowed between hands
+  function requireBettingPhase() {
+    if (state.phase === 'betting') return true;
+    // Don't cover the result banner; the betting phase is a moment away
+    if (state.phase !== 'result') {
+      flashMessage('Finish the current hand first');
+    }
+    return false;
   }
 
   function setPhase(newPhase) {
@@ -206,7 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
       elBettingSection.classList.remove('hidden');
       elActionButtons.classList.add('hidden');
       document.getElementById('strategy-advisor').classList.add('hidden');
-      document.getElementById('deal-btn').disabled = betting.getCurrentBet() === 0;
+      updateDealButton();
     } else if (newPhase === 'playing') {
       elBettingSection.classList.add('hidden');
       elActionButtons.classList.remove('hidden');
@@ -256,19 +276,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function startHand() {
-    if (game.needsShuffle()) {
+    const shuffled = game.needsShuffle();
+    if (shuffled) {
       game.initShoe();
       counter.reset();
-      showMessage('Shoe Shuffled', 'info');
     }
-    
+
     const betAmount = betting.placeBet();
     if (!betAmount) return;
     
     state.handBets = [betAmount];
     state.insuranceBet = 0;
     state.currentHandIndex = 0;
-    
+    state.awaitingInsurance = false;
+    state.actionLock = false;
+
     updateBankroll();
     updateBetDisplay();
     
@@ -276,7 +298,8 @@ document.addEventListener('DOMContentLoaded', () => {
     elDealerScore.classList.add('hidden');
     elPlayerHandsContainer.innerHTML = '';
     hideMessage();
-    
+    if (shuffled) flashMessage('Shoe Shuffled');
+
     const dealData = game.startHand();
     
     const handDiv = document.createElement('div');
@@ -325,9 +348,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const dealerUpCard = gameState.dealerCards[0];
     const isPlayerBJ = ph.hasBlackjack;
     
-    if (dealerUpCard.rank === 'A' && !gameState.insuranceTaken && !isPlayerBJ) {
+    // Dealer shows an Ace: offer insurance first, then peek (see finishInsuranceDecision)
+    if (dealerUpCard.rank === 'A' && !isPlayerBJ) {
+      state.awaitingInsurance = true;
       setPhase('playing');
-      updateActionButtons();
+      updatePlayerHandsRender();
       return;
     }
     
@@ -386,7 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateShoeIndicator();
         updatePlayerHandsRender();
         updatePlayerScores();
-        setTimeout(moveToNextHandOrDealer, 500);
+        advanceAfterDelay(500);
       }
     }
   }
@@ -439,17 +464,24 @@ document.addEventListener('DOMContentLoaded', () => {
         state.insuranceBet = insBet;
         game.takeInsurance();
         updateBankroll();
-        updateActionButtons();
-        
-        const dealerVal = game.handValue(game.getState().dealerCards).total;
-        if (dealerVal === 21) {
-          const holeCard = game.revealHole();
-          counter.countCard(holeCard.rank);
-          updateDealerCardsRender();
-          updateCountingPanel();
-          resolveGame();
-        }
       }
+    }
+    finishInsuranceDecision();
+  }
+
+  // Called once the player has taken or declined insurance: the dealer peeks
+  // for blackjack before the player may hit, double or split.
+  function finishInsuranceDecision() {
+    state.awaitingInsurance = false;
+    const dealerVal = game.handValue(game.getState().dealerCards).total;
+    if (dealerVal === 21) {
+      const holeCard = game.revealHole();
+      counter.countCard(holeCard.rank);
+      updateDealerCardsRender();
+      updateCountingPanel();
+      resolveGame();
+    } else {
+      updateActionButtons();
     }
   }
 
@@ -462,14 +494,33 @@ document.addEventListener('DOMContentLoaded', () => {
       
       const hand = gameState.playerHands[state.currentHandIndex];
       if (hand.isStood) {
-        setTimeout(moveToNextHandOrDealer, 500);
+        advanceAfterDelay(500);
       }
     } else {
       startDealerPhase();
     }
   }
 
+  // True when the player may act on the current hand (not mid-transition)
+  function canPlayHand() {
+    return state.phase === 'playing' && !state.awaitingInsurance && !state.actionLock;
+  }
+
+  // Auto-advance after a short pause, ignoring player input in the meantime so
+  // a quick click can't advance the hand twice.
+  function advanceAfterDelay(ms) {
+    state.actionLock = true;
+    ['btn-hit', 'btn-stand', 'btn-double', 'btn-split'].forEach(id => {
+      document.getElementById(id).disabled = true;
+    });
+    setTimeout(() => {
+      state.actionLock = false;
+      moveToNextHandOrDealer();
+    }, ms);
+  }
+
   function startDealerPhase() {
+    if (state.phase !== 'playing') return;
     setPhase('dealer');
     updatePlayerHandsRender();
     
@@ -504,6 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function resolveGame() {
+    if (state.phase === 'result') return;
     setPhase('result');
     const gameState = game.getState();
     
@@ -520,7 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.insuranceBet > 0) {
       if (dealerBJ) {
         totalPayout += state.insuranceBet * 3;
-        resultMsg.push(`Insurance pays $${state.insuranceBet * 2}`);
+        resultMsg.push(`Insurance pays ${formatMoney(state.insuranceBet * 2)}`);
       } else {
         resultMsg.push('Insurance lost');
       }
@@ -540,8 +592,8 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (res === 'win') { hasWin = true; }
       else if (res === 'loss') { hasLoss = true; }
       
-      if (res === 'blackjack') resultMsg.push(`Blackjack! +$${payout - bet}`);
-      else if (res === 'win') resultMsg.push(`Win +$${payout - bet}`);
+      if (res === 'blackjack') resultMsg.push(`Blackjack! +${formatMoney(payout - bet)}`);
+      else if (res === 'win') resultMsg.push(`Win +${formatMoney(payout - bet)}`);
       else if (res === 'push') resultMsg.push('Push');
       else if (res === 'loss') resultMsg.push(hand.isBusted ? 'Bust' : 'Loss');
     }
@@ -573,6 +625,9 @@ document.addEventListener('DOMContentLoaded', () => {
       betting.clearBet();
       updateBetDisplay();
       hideMessage();
+      if (betting.getBankroll() < state.minBet) {
+        showMessage('Out of chips: open Settings to reset your bankroll', 'loss');
+      }
     }, 2500);
   }
 
@@ -582,12 +637,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const bet = state.handBets[state.currentHandIndex];
     const bankroll = betting.getBankroll();
     
-    document.getElementById('btn-hit').disabled = hand.isStood || hand.isBusted;
-    document.getElementById('btn-stand').disabled = hand.isStood || hand.isBusted;
-    document.getElementById('btn-double').disabled = !game.canDouble(state.currentHandIndex) || bankroll < bet;
-    document.getElementById('btn-split').disabled = !game.canSplit(state.currentHandIndex) || bankroll < bet;
-    document.getElementById('btn-insurance').disabled = !game.canInsurance() || bankroll < (state.handBets[0] / 2);
-    
+    const waiting = state.awaitingInsurance;
+    document.getElementById('btn-hit').disabled = waiting || hand.isStood || hand.isBusted;
+    document.getElementById('btn-stand').disabled = waiting || hand.isStood || hand.isBusted;
+    document.getElementById('btn-double').disabled = waiting || !game.canDouble(state.currentHandIndex) || bankroll < bet;
+    document.getElementById('btn-split').disabled = waiting || !game.canSplit(state.currentHandIndex) || bankroll < bet;
+    document.getElementById('btn-insurance').disabled = !waiting || !game.canInsurance() || bankroll < (state.handBets[0] / 2);
+    document.getElementById('btn-insurance').classList.toggle('hidden', !waiting);
+    document.getElementById('btn-no-insurance').classList.toggle('hidden', !waiting);
+
     updateStrategyAdvisor();
   }
 
@@ -611,15 +669,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const canDbl = game.canDouble(state.currentHandIndex) && betting.getBankroll() >= state.handBets[state.currentHandIndex];
     const canSpl = game.canSplit(state.currentHandIndex) && betting.getBankroll() >= state.handBets[state.currentHandIndex];
     
-    // Check insurance first
-    if (game.canInsurance() && hand.cards.length === 2) {
-      advisorEl.className = 'recommend-stand';
-      actionEl.textContent = 'NO INSURANCE';
-      detailEl.textContent = 'Basic strategy: never take insurance';
+    // Insurance decision comes before any play on the hand. Hi-Lo index: take it at TC >= +3.
+    if (state.awaitingInsurance) {
+      const tc = counter.getTrueCount();
+      const take = tc >= 3;
+      advisorEl.className = take ? 'recommend-insurance' : 'recommend-stand';
+      actionEl.textContent = take ? 'TAKE INSURANCE' : 'NO INSURANCE';
+      detailEl.textContent = take
+        ? `True count ${tc.toFixed(1)} ≥ +3: insurance is +EV`
+        : `True count ${tc.toFixed(1)} < +3: decline insurance`;
       advisorEl.classList.remove('hidden');
-      // Still show the hand advice below it
+      return;
     }
-    
+
     const rec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl);
     
     // Build detail text
@@ -718,16 +780,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateBankroll() {
-    elBankrollAmount.textContent = `$${betting.getBankroll()}`;
-    if (state.phase === 'betting') {
-      document.getElementById('deal-btn').disabled = betting.getCurrentBet() === 0;
-    }
+    elBankrollAmount.textContent = formatMoney(betting.getBankroll());
+    updateDealButton();
+  }
+
+  function updateDealButton() {
+    document.getElementById('deal-btn').disabled = !betting.isBetValid();
   }
 
   function updateBetDisplay() {
     const bet = betting.getCurrentBet();
-    elBetAmount.textContent = `$${bet}`;
-    
+    elBetAmount.textContent = formatMoney(bet);
+    // Point out the table minimum while the staged bet is below it
+    document.getElementById('bet-label').textContent =
+      bet > 0 && bet < state.minBet ? `MIN ${formatMoney(state.minBet)}` : 'BET';
+    updateDealButton();
+
     elBetChipsVisual.innerHTML = '';
     if (bet > 0) {
       elBetChipsVisual.innerHTML = `<div class="chip chip-100" style="transform:scale(0.8)"><span class="chip-inner"><span class="chip-value">${bet}</span></span></div>`;
@@ -742,7 +810,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elDeckPenetration.textContent = counter.getPenetration() + '%';
     
     const suggested = counter.getSuggestedBet(state.minBet, state.maxBet);
-    elSuggestedBet.textContent = `$${suggested}`;
+    elSuggestedBet.textContent = formatMoney(suggested);
     
     const edge = counter.getPlayerEdge();
     elPlayerEdge.textContent = (edge > 0 ? '+' : '') + edge.toFixed(2) + '%';
@@ -758,7 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ids = ['spread-1', 'spread-2', 'spread-3', 'spread-4', 'spread-5'];
     spread.forEach((s, i) => {
       const el = document.getElementById(ids[i]);
-      if (el) el.textContent = `$${s.bet}`;
+      if (el) el.textContent = formatMoney(s.bet);
     });
   }
 
@@ -800,8 +868,8 @@ document.addEventListener('DOMContentLoaded', () => {
     elStatPushes.textContent = stats.pushes;
     elStatBlackjacks.textContent = stats.blackjacks;
     elStatWinrate.textContent = stats.winRate + '%';
-    elStatWagered.textContent = `$${stats.totalWagered}`;
-    elStatPnl.textContent = `${stats.netPnl >= 0 ? '+' : '-'}$${Math.abs(stats.netPnl)}`;
+    elStatWagered.textContent = formatMoney(stats.totalWagered);
+    elStatPnl.textContent = `${stats.netPnl >= 0 ? '+' : '-'}${formatMoney(Math.abs(stats.netPnl))}`;
     
     if (!document.getElementById('analytics-panel').classList.contains('hidden')) {
       analytics.drawChart(canvasChart);
@@ -812,6 +880,14 @@ document.addEventListener('DOMContentLoaded', () => {
     elGameMessage.textContent = text;
     elGameMessage.className = `message-${type}`;
     elGameMessage.classList.remove('hidden');
+  }
+
+  // Show a short notice, then hide it unless another message has replaced it
+  function flashMessage(text, ms = 1500) {
+    showMessage(text, 'info');
+    setTimeout(() => {
+      if (elGameMessage.textContent === text) hideMessage();
+    }, ms);
   }
 
   function hideMessage() {

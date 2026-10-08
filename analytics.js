@@ -91,9 +91,9 @@ class Analytics {
     ctx.font = '12px Inter, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`$${maxVal}`, padX - 10, padY);
-    ctx.fillText(`$${minVal}`, padX - 10, padY + chartH);
-    ctx.fillText(`$${this.startingBankroll}`, padX - 10, baseY);
+    ctx.fillText(formatMoney(maxVal), padX - 10, padY);
+    ctx.fillText(formatMoney(minVal), padX - 10, padY + chartH);
+    ctx.fillText(formatMoney(this.startingBankroll), padX - 10, baseY);
 
     const grad = ctx.createLinearGradient(0, padY, 0, padY + chartH);
     grad.addColorStop(0, 'rgba(212, 168, 67, 0.5)');

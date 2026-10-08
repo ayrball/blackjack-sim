@@ -1,4 +1,5 @@
-const CACHE_NAME = 'blackjack-sim-v1';
+// Bump the version whenever the asset list changes so old caches are cleared.
+const CACHE_NAME = 'blackjack-sim-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +10,9 @@ const ASSETS = [
   './strategy.js',
   './game.js',
   './app.js',
-  './manifest.json'
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
@@ -28,8 +31,20 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+// Network first so new deploys show up immediately; fall back to the cache offline.
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
+  const sameOrigin = new URL(e.request.url).origin === self.location.origin;
+
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(e.request)
+      .then(response => {
+        if (sameOrigin && response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

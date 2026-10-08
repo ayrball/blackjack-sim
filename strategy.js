@@ -25,8 +25,10 @@ class BasicStrategy {
       21: ['S','S','S','S','S','S','S','S','S','S']
     };
 
-    // Soft totals: rows = soft total 13-21, columns = dealer 2-A
+    // Soft totals: rows = soft total 12-21, columns = dealer 2-A
+    // (soft 12 is A,A when a split isn't possible)
     this.soft = {
+      12: ['H','H','H','H','H','H','H','H','H','H'],
       13: ['H','H','H','D','D','H','H','H','H','H'],
       14: ['H','H','H','D','D','H','H','H','H','H'],
       15: ['H','H','D','D','D','H','H','H','H','H'],
@@ -88,7 +90,7 @@ class BasicStrategy {
     }
 
     // Soft hand
-    if (handVal.soft && handVal.total >= 13 && handVal.total <= 21) {
+    if (handVal.soft && handVal.total >= 12 && handVal.total <= 21) {
       const row = this.soft[handVal.total];
       if (row) {
         let action = row[di];

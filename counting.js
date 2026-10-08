@@ -51,7 +51,8 @@ class CardCounter {
   }
 
   getSuggestedBet(minBet = 5, maxBet = 500) {
-    const tc = this.getTrueCount();
+    // Bet by whole true count (floored), matching the spread shown in settings
+    const tc = Math.floor(this.getTrueCount());
     let bet;
     if (tc <= 1) bet = minBet;
     else if (tc < 3) bet = minBet * 2;
@@ -73,8 +74,8 @@ class CardCounter {
   }
 
   getPlayerEdge() {
-    let edge = (this.getTrueCount() - 1) * 0.5 - 0.5;
-    return edge;
+    // Rule of thumb: about -0.5% off the top, +0.5% per true count (break-even near TC +1)
+    return this.getTrueCount() * 0.5 - 0.5;
   }
 
   getCardsSeen() {
