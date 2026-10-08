@@ -186,3 +186,32 @@ test('Illustrious 18 deviations switch at their index', () => {
   assert.equal(s.shouldTakeInsurance(2.9), false);
   assert.equal(s.shouldTakeInsurance(null), false);
 });
+
+test('H17 index values and how they are described', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, tc) => s.getRecommendation(cards(...ranks), up, true, true, tc);
+  // 12 vs 6 is -3 under H17 (S17 charts list -1)
+  assert.equal(rec(['10', '2'], '6', -2).action, 'STAND');
+  assert.equal(rec(['10', '2'], '6', -3.5).action, 'HIT');
+  assert.equal(rec(['10', '2'], '6', -2).deviation.rule, '12 vs 6: hit at TC < -3');
+  assert.equal(rec(['10', '3'], '2', 0).deviation.rule, '13 vs 2: hit at TC < -1');
+  assert.equal(rec(['10', '2'], '2', 0).deviation.rule, '12 vs 2: stand at TC ≥ +3');
+});
+
+test('deviation table for the strategy panel', () => {
+  const s = new BasicStrategy();
+  const rows = s.getDeviationTable(3.2);
+  assert.equal(rows.length, 18);
+  assert.equal(rows[0].hand, 'Insurance');
+  assert.equal(rows[0].current, 'YES');
+  const r16 = rows.find(r => r.hand === '16' && r.up === '10');
+  assert.equal(r16.basic, 'HIT');
+  assert.equal(r16.deviation, 'STAND');
+  assert.equal(r16.current, 'STAND');
+  const r12v6 = rows.find(r => r.hand === '12' && r.up === '6');
+  assert.equal(r12v6.below, true);
+  assert.equal(r12v6.deviation, 'HIT');
+  assert.equal(r12v6.current, 'STAND'); // not in effect at +3.2
+  const tens = rows.find(r => r.hand === '10,10' && r.up === '5');
+  assert.equal(tens.current, 'STAND'); // needs +5
+});

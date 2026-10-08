@@ -22,7 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     startingBankroll: 1000,
     numHands: 1,        // your hands per round (1 or 2)
     numBots: 0,         // simulated players sharing the table
-    deviationsEnabled: false
+    deviationsEnabled: true, // advisor applies the Illustrious 18
+    strategyTab: 'deviations'
   };
 
   // Cards currently visible on the table, and those that already played their deal animation
@@ -152,10 +153,31 @@ document.addEventListener('DOMContentLoaded', () => {
       e.currentTarget.classList.toggle('active');
     });
 
+    // Strategy button turns on the advisor and opens the strategy panel
     document.getElementById('toggle-strategy').addEventListener('click', (e) => {
       state.strategyEnabled = !state.strategyEnabled;
-      e.currentTarget.classList.toggle('active');
+      e.currentTarget.classList.toggle('active', state.strategyEnabled);
+      document.getElementById('strategy-panel').classList.toggle('hidden', !state.strategyEnabled);
       updateStrategyAdvisor();
+    });
+
+    // Closing the panel keeps the advisor on, e.g. to free up a phone screen
+    document.getElementById('close-strategy-panel').addEventListener('click', () => {
+      document.getElementById('strategy-panel').classList.add('hidden');
+    });
+
+    document.querySelectorAll('#strategy-mode button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.deviationsEnabled = btn.dataset.mode === 'deviations';
+        updateStrategyAdvisor();
+      });
+    });
+
+    document.querySelectorAll('#strategy-tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.strategyTab = btn.dataset.tab;
+        renderStrategyPanel();
+      });
     });
 
     document.getElementById('toggle-analytics').addEventListener('click', (e) => {
@@ -182,7 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('setting-max-bet').value = state.maxBet;
       document.getElementById('setting-bankroll').value = state.startingBankroll;
       document.getElementById('setting-bots').value = state.numBots;
-      document.getElementById('setting-deviations').checked = state.deviationsEnabled;
       updateBetSpreadPreview();
       document.getElementById('settings-overlay').classList.remove('hidden');
     });
@@ -211,9 +232,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const newBankroll = Math.max(newMin, parseInt(document.getElementById('setting-bankroll').value) || 1000);
       const newBots = Math.min(MAX_BOTS, Math.max(0, parseInt(document.getElementById('setting-bots').value) || 0));
 
-      // Table options apply straight away; only bankroll/limit changes reset the session
+      // The table option applies straight away; only bankroll/limit changes reset the session
       state.numBots = newBots;
-      state.deviationsEnabled = document.getElementById('setting-deviations').checked;
 
       const moneyChanged = newMin !== state.minBet || newMax !== state.maxBet || newBankroll !== state.startingBankroll;
       if (moneyChanged) {
@@ -760,7 +780,42 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-no-insurance').classList.toggle('hidden', !waiting);
   }
 
+  // Which basic-chart cell and deviation the player's current hand falls on
+  function currentHandInfo() {
+    if (!isMyTurn() || state.awaitingInsurance) return null;
+    const hand = currentHand();
+    if (!hand || hand.isStood) return null;
+    const { spot, hand: handIdx } = state.turn;
+    const dealerUpcard = game.getState().dealerCards[0].rank;
+    const canDbl = game.canDouble(spot, handIdx) && betting.getBankroll() >= hand.bet;
+    const canSpl = game.canSplit(spot, handIdx) && betting.getBankroll() >= hand.bet;
+    const tc = counter.getTrueCount();
+    const rec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl,
+      state.deviationsEnabled ? tc : null);
+    // Look up the deviation even in basic mode, so the panel can point at it
+    const devRec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl, tc);
+
+    const val = game.handValue(hand.cards);
+    const [c1, c2] = hand.cards;
+    const isPair = hand.cards.length === 2 &&
+      (c1.rank === c2.rank || (isTenRank(c1.rank) && isTenRank(c2.rank)));
+    const pairKey = isPair ? strategy.getPairKey(c1.rank) : null;
+    let chart;
+    if (isPair) chart = { table: 'pairs', row: pairKey };
+    else if (val.soft && val.total >= 13 && val.total <= 20) chart = { table: 'soft', row: String(val.total) };
+    else chart = { table: 'hard', row: String(Math.min(Math.max(val.total, 8), 17)) };
+
+    return {
+      hand, rec, tc, dealerUpcard, chart,
+      col: strategy.getDealerIndex(dealerUpcard),
+      devRule: devRec.deviation ? devRec.deviation.rule : null,
+      desc: isPair ? `Pair of ${pairKey}s` : `${val.soft ? 'Soft' : 'Hard'} ${val.total}`
+    };
+  }
+
   function updateStrategyAdvisor() {
+    renderStrategyPanel();
+
     const advisorEl = document.getElementById('strategy-advisor');
     const labelEl = document.getElementById('strategy-advisor-label');
     const actionEl = document.getElementById('strategy-advisor-action');
@@ -772,48 +827,107 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const tc = counter.getTrueCount();
-    const countForPlay = state.deviationsEnabled ? tc : null;
+    const modeLabel = state.deviationsEnabled ? `DEVIATIONS ON · TC ${tc.toFixed(1)}` : 'BASIC STRATEGY';
 
     // Insurance decision comes before any play on the hand
     if (state.awaitingInsurance) {
-      const take = strategy.shouldTakeInsurance(countForPlay);
+      const take = strategy.shouldTakeInsurance(state.deviationsEnabled ? tc : null);
       advisorEl.className = (take ? 'recommend-insurance' : 'recommend-stand') + (take ? ' deviation' : '');
-      labelEl.textContent = take ? 'COUNT DEVIATION' : 'BASIC STRATEGY';
+      labelEl.textContent = take ? `COUNT DEVIATION · TC ${tc.toFixed(1)}` : modeLabel;
       actionEl.textContent = take ? 'TAKE INSURANCE' : 'NO INSURANCE';
       detailEl.textContent = state.deviationsEnabled
-        ? `Insure at TC ≥ +3 (now ${tc.toFixed(1)})`
+        ? 'Insurance: take at TC ≥ +3'
         : 'Basic strategy: never take insurance';
       return;
     }
 
-    if (!isMyTurn()) {
+    const info = currentHandInfo();
+    if (!info) {
       advisorEl.classList.add('hidden');
       return;
     }
 
-    const { spot, hand: handIdx } = state.turn;
-    const hand = currentHand();
-    if (hand.isStood) { advisorEl.classList.add('hidden'); return; }
-
-    const dealerUpcard = game.getState().dealerCards[0].rank;
-    const canDbl = game.canDouble(spot, handIdx) && betting.getBankroll() >= hand.bet;
-    const canSpl = game.canSplit(spot, handIdx) && betting.getBankroll() >= hand.bet;
-    const rec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl, countForPlay);
-
-    const handVal = game.handValue(hand.cards);
-    const handDesc = handVal.soft ? `Soft ${handVal.total}` : `Hard ${handVal.total}`;
-    const [c1, c2] = hand.cards;
-    const isPair = hand.cards.length === 2 &&
-      (c1.rank === c2.rank || (isTenRank(c1.rank) && isTenRank(c2.rank)));
-    const pairDesc = isPair ? `Pair of ${isTenRank(c1.rank) ? '10' : c1.rank}s` : null;
-
+    const { rec } = info;
     const applied = rec.deviation && rec.deviation.applied;
     advisorEl.className = `recommend-${rec.action.toLowerCase()}` + (applied ? ' deviation' : '');
-    labelEl.textContent = applied ? 'COUNT DEVIATION' : 'BASIC STRATEGY';
+    labelEl.textContent = applied ? `COUNT DEVIATION · TC ${tc.toFixed(1)}` : modeLabel;
     actionEl.textContent = rec.action;
-    let detail = `${pairDesc || handDesc} vs Dealer ${dealerUpcard}`;
-    if (rec.deviation) detail += ` · ${rec.deviation.rule} (TC ${tc.toFixed(1)})`;
+    let detail = `${info.desc} vs Dealer ${info.dealerUpcard}`;
+    if (rec.deviation) detail += ` · ${rec.deviation.rule}`;
     detailEl.textContent = detail;
+  }
+
+  // ==================== STRATEGY PANEL ====================
+
+  function renderStrategyPanel() {
+    const panel = document.getElementById('strategy-panel');
+    if (panel.classList.contains('hidden')) return;
+
+    const tc = counter.getTrueCount();
+    const tcEl = document.getElementById('strategy-tc');
+    tcEl.textContent = (tc > 0 ? '+' : '') + tc.toFixed(1);
+    tcEl.className = tc > 0 ? 'positive' : tc < 0 ? 'negative' : '';
+
+    document.querySelectorAll('#strategy-mode button').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.mode === 'deviations') === state.deviationsEnabled);
+    });
+    document.querySelectorAll('#strategy-tabs button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === state.strategyTab);
+    });
+    document.getElementById('strategy-deviations-view').classList.toggle('hidden', state.strategyTab !== 'deviations');
+    document.getElementById('strategy-basic-view').classList.toggle('hidden', state.strategyTab !== 'basic');
+
+    const info = currentHandInfo();
+    if (state.strategyTab === 'deviations') {
+      renderDeviationTable(tc, info);
+    } else {
+      renderBasicChart(info);
+    }
+  }
+
+  function renderDeviationTable(tc, info) {
+    const fmtIndex = i => (i > 0 ? '+' : '') + i;
+    let html = '<thead><tr><th>#</th><th>Hand</th><th>vs</th><th>Index</th><th>Basic</th><th>Count play</th></tr></thead><tbody>';
+    strategy.getDeviationTable(tc).forEach(row => {
+      const inEffect = row.current === row.deviation;
+      const isCurrent = (row.hand === 'Insurance' && state.awaitingInsurance) ||
+        (info && row.rule && row.rule === info.devRule);
+      // e.g. "≥ +3" for 12 vs 2 (stand), "< -3" for 12 vs 6 (hit)
+      const indexText = `${row.below ? '<' : '≥'} ${fmtIndex(row.index)}`;
+      html += `<tr class="${inEffect ? 'dev-on' : ''} ${isCurrent ? 'dev-current' : ''}" title="${row.rule || 'Insurance: take at TC ≥ +3'}">` +
+        `<td>${row.rank}</td><td>${row.hand}</td><td>${row.up}</td><td>${indexText}</td>` +
+        `<td>${row.basic}</td><td class="dev-play">${row.deviation}</td></tr>`;
+    });
+    document.getElementById('deviation-table').innerHTML = html + '</tbody>';
+  }
+
+  function renderBasicChart(info) {
+    const chart = strategy.getChartData();
+    const ups = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'A'];
+    // Cells that have an Illustrious 18 deviation
+    const devCells = new Set(BasicStrategy.DEVIATIONS.map(d =>
+      `${d.type === 'pair' ? 'pairs' : 'hard'}:${d.type === 'pair' ? d.pair : d.total}:${d.up === 11 ? 9 : d.up - 2}`));
+
+    const section = (title, key, rows, label) => {
+      let html = `<table class="basic-table"><caption>${title}</caption><thead><tr><th></th>`;
+      ups.forEach(u => { html += `<th>${u}</th>`; });
+      html += '</tr></thead><tbody>';
+      rows.forEach(r => {
+        html += `<tr><th>${label(r)}</th>`;
+        chart[key][r].forEach((code, col) => {
+          const current = info && info.chart.table === key && info.chart.row === String(r) && info.col === col;
+          const hasDev = devCells.has(`${key}:${r}:${col}`);
+          html += `<td class="act-${code}${hasDev ? ' has-dev' : ''}${current ? ' cell-current' : ''}">${code}</td>`;
+        });
+        html += '</tr>';
+      });
+      return html + '</tbody></table>';
+    };
+
+    document.getElementById('basic-chart').innerHTML =
+      section('Hard totals', 'hard', [17, 16, 15, 14, 13, 12, 11, 10, 9, 8], r => (r === 17 ? '17+' : r === 8 ? '≤8' : r)) +
+      section('Soft totals', 'soft', [20, 19, 18, 17, 16, 15, 14, 13], r => `A,${r - 11}`) +
+      section('Pairs', 'pairs', ['A', '10', '9', '8', '7', '6', '5', '4', '3', '2'], r => `${r},${r}`);
   }
 
   function updateDealerScore() {
@@ -885,6 +999,7 @@ document.addEventListener('DOMContentLoaded', () => {
     elPlayerEdge.className = 'stat-value ' + (edge > 0 ? 'positive' : 'negative');
 
     populateCardGrid();
+    renderStrategyPanel();
   }
 
   function updateBetSpreadPreview() {

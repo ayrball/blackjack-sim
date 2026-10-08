@@ -1310,3 +1310,188 @@ h1, h2, h3, .title-suit, #game-message {
   #bankroll-label { display: none; }
   .header-btn { padding: 5px 7px; }
 }
+
+/* ==================== STRATEGY PANEL ==================== */
+#strategy-panel {
+  width: 330px;
+  min-width: 330px;
+  background: var(--panel-bg);
+  backdrop-filter: blur(12px);
+  border-right: 1px solid var(--panel-border);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 5px 0 25px rgba(0, 0, 0, 0.3);
+  z-index: 90;
+  overflow-y: auto;
+}
+
+#strategy-panel .panel-header { gap: 8px; }
+#strategy-panel .panel-header h2 { flex: 1; }
+#strategy-panel .panel-body { gap: 14px; padding: 16px; }
+#close-strategy-panel { font-size: 1.4rem; line-height: 1; }
+
+.seg-toggle {
+  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.seg-toggle button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 7px 8px;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.seg-toggle button.active {
+  background: var(--accent-gold);
+  color: #1a1a2e;
+}
+
+#strategy-tabs button.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+#strategy-tc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+#strategy-tc {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  color: var(--text-primary);
+}
+#strategy-tc.positive { color: var(--win-emerald); }
+#strategy-tc.negative { color: var(--loss-crimson); }
+
+.strategy-note {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.dev-on-sample { color: var(--accent-gold); font-weight: 600; }
+
+.strategy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.strategy-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.65rem;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  padding: 4px 5px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.strategy-table td {
+  padding: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  white-space: nowrap;
+}
+
+.strategy-table td:first-child { color: var(--text-secondary); }
+.strategy-table .dev-play { font-weight: 700; }
+
+/* Count play in effect at the current true count */
+.strategy-table tr.dev-on td { background: rgba(212, 168, 67, 0.12); }
+.strategy-table tr.dev-on .dev-play { color: var(--accent-gold); }
+
+/* The deviation that applies to the hand being played (white outline,
+   so it is not mistaken for an in-effect gold row) */
+.strategy-table tr.dev-current td {
+  border-top: 1px solid #fff;
+  border-bottom: 1px solid #fff;
+}
+.strategy-table tr.dev-current td:first-child { border-left: 3px solid #fff; }
+.strategy-table tr.dev-current td:last-child { border-right: 1px solid #fff; }
+.strategy-table tr.dev-current:not(.dev-on) td { background: rgba(255, 255, 255, 0.08); }
+
+.basic-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 0.68rem;
+  margin-bottom: 12px;
+  table-layout: fixed;
+}
+
+.basic-table caption {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.basic-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+}
+
+.basic-table tbody th { text-align: right; padding-right: 4px; width: 34px; }
+
+.basic-table td {
+  text-align: center;
+  font-weight: 700;
+  padding: 3px 0;
+  border-radius: 3px;
+  color: #10131c;
+}
+
+.act-H { background: #2ecc71; }
+.act-S { background: #5dade2; }
+.act-D { background: #f1c40f; }
+.act-Ds { background: #f8e08e; }
+.act-P { background: #b884d0; }
+
+.basic-table td.has-dev { outline: 1px dashed rgba(255, 255, 255, 0.85); outline-offset: -3px; }
+.basic-table td.cell-current { box-shadow: 0 0 0 2px #fff, 0 0 10px rgba(255, 255, 255, 0.6); }
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.chart-legend span {
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #10131c;
+}
+
+@media (max-width: 900px) {
+  #strategy-panel {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  #strategy-panel { width: 100%; min-width: 0; }
+}

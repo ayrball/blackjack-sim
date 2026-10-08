@@ -98,13 +98,6 @@
           </div>
           <span class="setting-hint">Simulated players play basic strategy. Count their cards too.</span>
         </div>
-        <div class="setting-group">
-          <label class="setting-check">
-            <input type="checkbox" id="setting-deviations">
-            <span>Count deviations (Illustrious 18)</span>
-          </label>
-          <span class="setting-hint">The strategy advisor switches plays at Hi-Lo true-count indices, including insurance at +3</span>
-        </div>
 
         <div class="setting-divider"></div>
 
@@ -127,6 +120,40 @@
 
   <!-- ==================== MAIN LAYOUT ==================== -->
   <main id="main-layout">
+
+    <!-- ========== STRATEGY PANEL (Left Sidebar) ========== -->
+    <aside id="strategy-panel" class="side-panel hidden">
+      <div class="panel-header">
+        <h2>Strategy</h2>
+        <span class="system-badge">6D · H17 · DAS</span>
+        <button id="close-strategy-panel" class="modal-close" title="Hide chart (advisor stays on)">&times;</button>
+      </div>
+      <div class="panel-body">
+        <div class="seg-toggle" id="strategy-mode" role="group" aria-label="Advisor mode">
+          <button data-mode="basic">Basic only</button>
+          <button data-mode="deviations" class="active">Basic + Deviations</button>
+        </div>
+        <div id="strategy-tc-row">
+          <span>True count</span>
+          <strong id="strategy-tc">0.0</strong>
+        </div>
+        <div class="seg-toggle" id="strategy-tabs" role="tablist">
+          <button data-tab="deviations" class="active">Deviations (I18)</button>
+          <button data-tab="basic">Basic chart</button>
+        </div>
+        <div id="strategy-deviations-view">
+          <p class="strategy-note">Hi-Lo index plays, ranked by value. Make the count play when the true count reaches the index; <span class="dev-on-sample">gold</span> rows are in effect now.</p>
+          <table class="strategy-table" id="deviation-table"></table>
+        </div>
+        <div id="strategy-basic-view" class="hidden">
+          <div id="basic-chart"></div>
+          <div class="chart-legend">
+            <span class="act-H">H Hit</span><span class="act-S">S Stand</span><span class="act-D">D Double</span><span class="act-Ds">Ds Double/stand</span><span class="act-P">P Split</span>
+          </div>
+          <p class="strategy-note">Dotted cells have a count deviation; see the Deviations tab.</p>
+        </div>
+      </div>
+    </aside>
 
     <!-- ========== GAME TABLE ========== -->
     <section id="game-table">

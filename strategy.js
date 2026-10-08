@@ -67,8 +67,10 @@ class BasicStrategy {
     return rank;
   }
 
-  // Hi-Lo Illustrious 18 for 6 decks, dealer hits soft 17. Each entry switches
-  // from `below` to `atOrAbove` once the true count reaches `index`.
+  // Hi-Lo Illustrious 18 for 6 decks, dealer hits soft 17 (Schlesinger's list
+  // in rank order). Each entry switches from `below` to `atOrAbove` once the
+  // true count reaches `index`. The H17 values differ from S17 charts on
+  // 11 vs A (-1, S17 +1), 10 vs A (+3, S17 +4) and 12 vs 6 (-3, S17 -1).
   // Upcards: 2-10, 11 = Ace. Insurance (take at +3) is in shouldTakeInsurance.
   static get DEVIATIONS() {
     return [
@@ -87,7 +89,7 @@ class BasicStrategy {
       { type: 'hard', total: 13, up: 2,  index: -1, atOrAbove: 'S', below: 'H' },
       { type: 'hard', total: 12, up: 4,  index: 0,  atOrAbove: 'S', below: 'H' },
       { type: 'hard', total: 12, up: 5,  index: -2, atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 12, up: 6,  index: -1, atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 12, up: 6,  index: -3, atOrAbove: 'S', below: 'H' },
       { type: 'hard', total: 13, up: 3,  index: -2, atOrAbove: 'S', below: 'H' }
     ];
   }
@@ -110,12 +112,50 @@ class BasicStrategy {
       (d.type === 'pair' ? d.pair === match.pair : d.total === match.total));
   }
 
-  // Describes a deviation for the advisor, e.g. "16 vs 10: stand at TC ≥ 0"
+  // The basic-strategy play for a deviation's hand (H17 table)
+  basicPlayFor(d) {
+    const di = d.up === 11 ? 9 : d.up - 2;
+    const code = d.type === 'pair' ? this.pairs[d.pair][di] : this.hard[d.total][di];
+    return code === 'Ds' ? 'D' : code;
+  }
+
+  // Describes the departure from basic strategy, e.g. "16 vs 10: stand at
+  // TC ≥ 0" or, where basic already stands, "12 vs 6: hit at TC < -3"
   describeDeviation(d) {
     const up = d.up === 11 ? 'A' : String(d.up);
     const hand = d.type === 'pair' ? `${d.pair},${d.pair}` : String(d.total);
     const sign = d.index > 0 ? '+' : '';
+    if (this.basicPlayFor(d) === d.atOrAbove) {
+      return `${hand} vs ${up}: ${this._actionName(d.below).toLowerCase()} at TC < ${sign}${d.index}`;
+    }
     return `${hand} vs ${up}: ${this._actionName(d.atOrAbove).toLowerCase()} at TC ≥ ${sign}${d.index}`;
+  }
+
+  // Rows for the strategy panel: insurance plus the 17 playing deviations,
+  // with the basic play, the count-based play and the play at `trueCount`
+  getDeviationTable(trueCount) {
+    const rows = [{
+      rank: 1, hand: 'Insurance', up: 'A', index: BasicStrategy.INSURANCE_INDEX,
+      basic: 'NO', deviation: 'YES', current: trueCount >= BasicStrategy.INSURANCE_INDEX ? 'YES' : 'NO',
+      below: false, rule: null
+    }];
+    BasicStrategy.DEVIATIONS.forEach((d, i) => {
+      const basic = this.basicPlayFor(d);
+      const deviation = basic === d.atOrAbove ? d.below : d.atOrAbove;
+      const current = trueCount >= d.index ? d.atOrAbove : d.below;
+      rows.push({
+        rank: i + 2,
+        hand: d.type === 'pair' ? `${d.pair},${d.pair}` : String(d.total),
+        up: d.up === 11 ? 'A' : String(d.up),
+        index: d.index,
+        basic: this._actionName(basic),
+        deviation: this._actionName(deviation),
+        current: this._actionName(current),
+        below: basic === d.atOrAbove, // count play applies below the index
+        rule: this.describeDeviation(d)
+      });
+    });
+    return rows;
   }
 
   // Returns { action, code, deviation }. Pass a true count to apply the
