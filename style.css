@@ -231,8 +231,34 @@ h1, h2, h3, .title-suit, #game-message {
 
 #player-hands-container {
   display: flex;
-  gap: 40px;
+  flex-wrap: wrap;
+  gap: 12px 32px;
   justify-content: center;
+  max-width: 100%;
+}
+
+/* ==================== SEATS ==================== */
+.seat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.seat-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+}
+
+.seat.you .seat-label {
+  color: var(--accent-gold);
+}
+
+.seat-hands {
+  display: flex;
+  gap: 16px;
 }
 
 .hand-container {
@@ -243,9 +269,40 @@ h1, h2, h3, .title-suit, #game-message {
   transition: opacity 0.3s ease;
 }
 
-.hand-container:not(.active) {
+/* While someone is acting, dim every other hand */
+#player-hands-container.in-play .hand-container:not(.active) {
   opacity: 0.5;
 }
+
+.hand-bet {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-gold);
+}
+
+/* Smaller cards when several seats share the table */
+#player-hands-container.crowded { gap: 10px 20px; }
+#player-hands-container.crowded .seat-hands { gap: 10px; }
+#player-hands-container.crowded .player-cards { min-height: 92px; }
+#player-hands-container.crowded .card { width: 64px; height: 92px; margin-left: -40px; }
+#player-hands-container.crowded .card-rank { font-size: 0.85rem; }
+#player-hands-container.crowded .card-suit-symbol { font-size: 0.75rem; }
+#player-hands-container.crowded .card-center-pip { font-size: 1.8rem; }
+#player-hands-container.crowded .score-badge { margin-top: 8px; padding: 2px 8px; font-size: 0.75rem; }
+
+#player-hands-container.packed { gap: 8px 14px; }
+#player-hands-container.packed .seat-hands { gap: 8px; }
+#player-hands-container.packed .player-cards { min-height: 76px; }
+#player-hands-container.packed .card { width: 52px; height: 76px; margin-left: -34px; }
+#player-hands-container.packed .card-rank { font-size: 0.75rem; }
+#player-hands-container.packed .card-suit-symbol { font-size: 0.65rem; }
+#player-hands-container.packed .card-center-pip { font-size: 1.4rem; }
+#player-hands-container.packed .top-left { top: 3px; left: 4px; }
+#player-hands-container.packed .bottom-right { bottom: 3px; right: 4px; }
+#player-hands-container.packed .score-badge { margin-top: 6px; padding: 2px 6px; font-size: 0.7rem; }
+#player-hands-container.crowded .card:first-child,
+#player-hands-container.packed .card:first-child { margin-left: 0; }
 
 /* ==================== PLAYING CARDS ==================== */
 .card {
@@ -1154,4 +1211,102 @@ h1, h2, h3, .title-suit, #game-message {
   border-top: 1px solid var(--panel-border);
   display: flex;
   justify-content: flex-end;
+}
+
+/* ==================== MULTI-HAND & TABLE OPTIONS ==================== */
+.score-badge.win { border-color: var(--win-emerald); color: var(--win-emerald); }
+.score-badge.loss { border-color: var(--loss-crimson); color: var(--loss-crimson); }
+.score-badge.push { color: var(--text-primary); }
+
+#hands-toggle {
+  display: flex;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#hands-toggle button {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 6px 14px;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+#hands-toggle button.active {
+  background: var(--accent-gold);
+  color: #1a1a2e;
+}
+
+/* A count-based play stands out from plain basic strategy */
+#strategy-advisor.deviation {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 14px rgba(212, 168, 67, 0.35);
+}
+
+#strategy-advisor.deviation #strategy-advisor-label {
+  color: var(--accent-gold);
+}
+
+.setting-input-row select {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 10px 4px;
+  width: 100%;
+  outline: none;
+  cursor: pointer;
+}
+
+.setting-input-row select option {
+  background: #141928;
+}
+
+.setting-group > label.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.setting-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-gold);
+}
+
+/* Taller settings modal scrolls on small screens */
+.modal {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 600px) {
+  #player-hands-container.crowded .card { width: 50px; height: 72px; margin-left: -32px; }
+  #player-hands-container.crowded .player-cards { min-height: 72px; }
+  #player-hands-container.crowded .card-center-pip { font-size: 1.3rem; }
+  #player-hands-container.packed .card { width: 40px; height: 58px; margin-left: -26px; }
+  #player-hands-container.packed .player-cards { min-height: 58px; }
+  #player-hands-container.packed .card-rank { font-size: 0.65rem; }
+  #player-hands-container.packed .card-center-pip { font-size: 1rem; }
+  #player-hands-container.crowded .card:first-child,
+  #player-hands-container.packed .card:first-child { margin-left: 0; }
+}
+
+/* Phone header: keep the five buttons on screen */
+@media (max-width: 600px) {
+  #top-bar-left, #top-bar-right { flex: 0 0 auto; }
+  #top-bar-right { gap: 4px; }
+  #game-title { font-size: 0; letter-spacing: 0; }
+  #game-title .title-suit { font-size: 1.2rem; }
+  #bankroll-label { display: none; }
+  .header-btn { padding: 5px 7px; }
 }

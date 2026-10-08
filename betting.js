@@ -10,6 +10,16 @@ class BettingSystem {
     this.bankroll = startingBankroll;
     this.stagedBet = 0;
     this.lastBet = 0;
+    this.hands = 1;
+  }
+
+  // Number of hands played per round; the staged bet goes on each one
+  setHands(n) {
+    this.hands = n;
+  }
+
+  getTotalStake() {
+    return this.stagedBet * this.hands;
   }
 
   getBankroll() {
@@ -22,7 +32,7 @@ class BettingSystem {
 
   addChip(value) {
     if (this.stagedBet + value > this.maxBet) return false;
-    if (this.stagedBet + value > this.bankroll) return false;
+    if ((this.stagedBet + value) * this.hands > this.bankroll) return false;
     this.stagedBet += value;
     return true;
   }
@@ -32,21 +42,28 @@ class BettingSystem {
   }
 
   repeatBet() {
-    if (this.lastBet > this.bankroll) return false;
+    if (this.lastBet * this.hands > this.bankroll) return false;
     this.stagedBet = this.lastBet;
     return true;
   }
 
-  // Staged bet meets the table minimum and is covered by the bankroll
+  // Staged bet meets the table minimum and the bankroll covers it on every hand
   isBetValid() {
-    return this.stagedBet >= this.minBet && this.stagedBet > 0 && this.stagedBet <= this.bankroll;
+    return this.stagedBet >= this.minBet && this.stagedBet > 0 && this.getTotalStake() <= this.bankroll;
   }
 
   placeBet() {
     if (!this.isBetValid()) return false;
-    this.bankroll -= this.stagedBet;
+    this.bankroll -= this.getTotalStake();
     this.lastBet = this.stagedBet;
-    return this.stagedBet;
+    return this.stagedBet; // per hand
+  }
+
+  // Extra money put out mid-round: doubles, splits, insurance
+  withdraw(amount) {
+    if (amount > this.bankroll) return false;
+    this.bankroll -= amount;
+    return true;
   }
 
   payout(amount) {

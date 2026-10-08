@@ -67,25 +67,81 @@ class BasicStrategy {
     return rank;
   }
 
-  getRecommendation(playerCards, dealerUpcard, canDouble, canSplit) {
+  // Hi-Lo Illustrious 18 for 6 decks, dealer hits soft 17. Each entry switches
+  // from `below` to `atOrAbove` once the true count reaches `index`.
+  // Upcards: 2-10, 11 = Ace. Insurance (take at +3) is in shouldTakeInsurance.
+  static get DEVIATIONS() {
+    return [
+      { type: 'hard', total: 16, up: 10, index: 0,  atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 15, up: 10, index: 4,  atOrAbove: 'S', below: 'H' },
+      { type: 'pair', pair: '10', up: 5, index: 5,  atOrAbove: 'P', below: 'S' },
+      { type: 'pair', pair: '10', up: 6, index: 4,  atOrAbove: 'P', below: 'S' },
+      { type: 'hard', total: 10, up: 10, index: 4,  atOrAbove: 'D', below: 'H' },
+      { type: 'hard', total: 12, up: 3,  index: 2,  atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 12, up: 2,  index: 3,  atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 11, up: 11, index: -1, atOrAbove: 'D', below: 'H' },
+      { type: 'hard', total: 9,  up: 2,  index: 1,  atOrAbove: 'D', below: 'H' },
+      { type: 'hard', total: 10, up: 11, index: 3,  atOrAbove: 'D', below: 'H' },
+      { type: 'hard', total: 9,  up: 7,  index: 3,  atOrAbove: 'D', below: 'H' },
+      { type: 'hard', total: 16, up: 9,  index: 5,  atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 13, up: 2,  index: -1, atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 12, up: 4,  index: 0,  atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 12, up: 5,  index: -2, atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 12, up: 6,  index: -1, atOrAbove: 'S', below: 'H' },
+      { type: 'hard', total: 13, up: 3,  index: -2, atOrAbove: 'S', below: 'H' }
+    ];
+  }
+
+  static get INSURANCE_INDEX() { return 3; }
+
+  // Basic strategy never insures; with deviations on, insure at TC >= +3
+  shouldTakeInsurance(trueCount = null) {
+    return trueCount !== null && trueCount >= BasicStrategy.INSURANCE_INDEX;
+  }
+
+  _upValue(dealerUpcard) {
+    if (dealerUpcard === 'A') return 11;
+    return ['10','J','Q','K'].includes(dealerUpcard) ? 10 : parseInt(dealerUpcard);
+  }
+
+  _findDeviation(match) {
+    return BasicStrategy.DEVIATIONS.find(d =>
+      d.type === match.type && d.up === match.up &&
+      (d.type === 'pair' ? d.pair === match.pair : d.total === match.total));
+  }
+
+  // Describes a deviation for the advisor, e.g. "16 vs 10: stand at TC ≥ 0"
+  describeDeviation(d) {
+    const up = d.up === 11 ? 'A' : String(d.up);
+    const hand = d.type === 'pair' ? `${d.pair},${d.pair}` : String(d.total);
+    const sign = d.index > 0 ? '+' : '';
+    return `${hand} vs ${up}: ${this._actionName(d.atOrAbove).toLowerCase()} at TC ≥ ${sign}${d.index}`;
+  }
+
+  // Returns { action, code, deviation }. Pass a true count to apply the
+  // Illustrious 18; leave it null for plain basic strategy. `deviation` is set
+  // whenever the hand is an index play, with `applied` true when the count
+  // changes the basic-strategy action.
+  getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, trueCount = null) {
     const di = this.getDealerIndex(dealerUpcard);
+    const up = this._upValue(dealerUpcard);
     const handVal = this._handValue(playerCards);
+    const useCount = trueCount !== null;
 
     // Check for pair first
+    let pairDev = null;
     if (playerCards.length === 2) {
       const r1 = this.getPairKey(playerCards[0].rank);
       const r2 = this.getPairKey(playerCards[1].rank);
       if (r1 === r2 && this.pairs[r1]) {
-        const pairAction = this.pairs[r1][di];
+        const basic = this.pairs[r1][di];
+        const dev = useCount && canSplit ? this._findDeviation({ type: 'pair', pair: r1, up }) : null;
+        const pairAction = dev ? (trueCount >= dev.index ? dev.atOrAbove : dev.below) : basic;
         if (pairAction === 'P' && canSplit) {
-          return { action: 'SPLIT', code: 'P' };
+          return { action: 'SPLIT', code: 'P', deviation: dev ? this._deviationInfo(dev, basic, 'P') : null };
         }
-        // If can't split (5,5 never splits anyway, or 10,10 stands), fall through
-        if (pairAction === 'P' && !canSplit) {
-          // Fall through to hard/soft
-        } else if (pairAction !== 'P') {
-          // Pair table says don't split, fall through
-        }
+        // Otherwise (no split allowed or advised) play it as a hard/soft total
+        pairDev = dev;
       }
     }
 
@@ -99,7 +155,7 @@ class BasicStrategy {
           action = action === 'Ds' ? 'S' : 'H';
         }
         if (action === 'D' || action === 'Ds') action = 'D';
-        return { action: this._actionName(action), code: action };
+        return { action: this._actionName(action), code: action, deviation: null };
       }
     }
 
@@ -108,14 +164,27 @@ class BasicStrategy {
     const hardTotal = Math.min(Math.max(total, 5), 21);
     const row = this.hard[hardTotal];
     if (row) {
-      let action = row[di];
-      if (action === 'D' && !canDouble) {
-        action = 'H';
+      const basic = row[di];
+      const dev = useCount ? this._findDeviation({ type: 'hard', total: hardTotal, up }) : null;
+      if (!dev && pairDev) {
+        // e.g. 10,10 vs 6 below its index: stand, but still show the index
+        return { action: this._actionName(basic), code: basic, deviation: { rule: this.describeDeviation(pairDev), applied: false } };
       }
-      return { action: this._actionName(action), code: action };
+      const chosen = dev ? (trueCount >= dev.index ? dev.atOrAbove : dev.below) : basic;
+      const action = chosen === 'D' && !canDouble ? 'H' : chosen;
+      return {
+        action: this._actionName(action),
+        code: action,
+        deviation: dev ? this._deviationInfo(dev, basic, chosen) : null
+      };
     }
 
-    return { action: 'STAND', code: 'S' };
+    return { action: 'STAND', code: 'S', deviation: null };
+  }
+
+  _deviationInfo(dev, basicCode, chosenCode) {
+    const normalize = c => (c === 'Ds' ? 'D' : c);
+    return { rule: this.describeDeviation(dev), applied: normalize(basicCode) !== normalize(chosenCode) };
   }
 
   _actionName(code) {

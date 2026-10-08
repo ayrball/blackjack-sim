@@ -1,8 +1,12 @@
+// Table state is a row of seats ("spots"), dealt left to right. Each spot holds
+// one hand, or up to four after splits. The app decides who owns each spot.
 class BlackjackGame {
   constructor(numDecks = 6) {
     this.numDecks = numDecks;
     this.ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
     this.suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+    this.maxHandsPerSpot = 4;
+    this.state = null;
     this.initShoe();
   }
 
@@ -43,40 +47,61 @@ class BlackjackGame {
     return this.numDecks * 52;
   }
 
-  startHand() {
-    this.state = {
-      playerHands: [
-        {
-          cards: [this.drawCard(), this.drawCard()],
-          isStood: false,
-          isDoubled: false,
-          isBusted: false,
-          hasBlackjack: false
-        }
-      ],
-      dealerCards: [this.drawCard(), this.drawCard()],
-      dealerHoleHidden: true,
-      insuranceTaken: false
+  newHand(cards, extra = {}) {
+    return {
+      cards,
+      bet: 0,
+      isStood: false,
+      isDoubled: false,
+      isBusted: false,
+      hasBlackjack: false,
+      isSplitAce: false,
+      result: null,
+      ...extra
     };
+  }
 
-    const ph = this.state.playerHands[0];
-    const val = this.handValue(ph.cards);
-    if (val.total === 21 && ph.cards.length === 2) {
-      ph.hasBlackjack = true;
-      ph.isStood = true;
+  // Deals one card to each spot, the dealer's upcard, a second card to each
+  // spot, then the hole card. `dealOrder` lists every card in that order.
+  startRound(spotCount) {
+    const spots = [];
+    for (let i = 0; i < spotCount; i++) {
+      spots.push({ hands: [this.newHand([])] });
+    }
+    const dealerCards = [];
+    const dealOrder = [];
+
+    for (let pass = 0; pass < 2; pass++) {
+      spots.forEach((spot, s) => {
+        const card = this.drawCard();
+        spot.hands[0].cards.push(card);
+        dealOrder.push({ target: 'spot', spot: s, card });
+      });
+      const card = this.drawCard();
+      dealerCards.push(card);
+      dealOrder.push({ target: 'dealer', card, hole: pass === 1 });
     }
 
-    return {
-      playerCards: ph.cards,
-      dealerCards: this.state.dealerCards,
-      dealerHoleHidden: true
-    };
+    for (const spot of spots) {
+      const hand = spot.hands[0];
+      if (this.isBlackjack(hand.cards)) {
+        hand.hasBlackjack = true;
+        hand.isStood = true;
+      }
+    }
+
+    this.state = { spots, dealerCards, dealerHoleHidden: true };
+    return dealOrder;
+  }
+
+  getHand(spotIndex, handIndex) {
+    return this.state.spots[spotIndex].hands[handIndex];
   }
 
   handValue(cards) {
     let total = 0;
     let aces = 0;
-    
+
     for (const card of cards) {
       if (card.rank === 'A') {
         aces++;
@@ -87,18 +112,13 @@ class BlackjackGame {
         total += parseInt(card.rank);
       }
     }
-    
-    let soft = false;
+
     while (total > 21 && aces > 0) {
       total -= 10;
       aces--;
     }
-    
-    if (aces > 0 && total <= 21) {
-      soft = true;
-    }
-    
-    return { total, soft };
+
+    return { total, soft: aces > 0 && total <= 21 };
   }
 
   isBlackjack(cards) {
@@ -109,37 +129,36 @@ class BlackjackGame {
     return this.handValue(cards).total > 21;
   }
 
-  hit(handIndex = 0) {
-    const hand = this.state.playerHands[handIndex];
+  hit(spotIndex, handIndex) {
+    const hand = this.getHand(spotIndex, handIndex);
     if (hand.isStood || hand.isBusted) return null;
-    
+
     const card = this.drawCard();
     hand.cards.push(card);
-    
+
     if (this.isBust(hand.cards)) {
       hand.isBusted = true;
       hand.isStood = true;
     } else if (this.handValue(hand.cards).total === 21) {
       hand.isStood = true;
     }
-    
+
     return card;
   }
 
-  stand(handIndex = 0) {
-    if (this.state.playerHands[handIndex]) {
-      this.state.playerHands[handIndex].isStood = true;
-    }
+  stand(spotIndex, handIndex) {
+    const hand = this.getHand(spotIndex, handIndex);
+    if (hand) hand.isStood = true;
   }
 
-  canDouble(handIndex = 0) {
-    const hand = this.state.playerHands[handIndex];
+  canDouble(spotIndex, handIndex) {
+    const hand = this.getHand(spotIndex, handIndex);
     return hand.cards.length === 2 && !hand.isStood && !hand.isBusted;
   }
 
-  double(handIndex = 0) {
-    if (!this.canDouble(handIndex)) return null;
-    const hand = this.state.playerHands[handIndex];
+  double(spotIndex, handIndex) {
+    if (!this.canDouble(spotIndex, handIndex)) return null;
+    const hand = this.getHand(spotIndex, handIndex);
     const card = this.drawCard();
     hand.cards.push(card);
     hand.isDoubled = true;
@@ -150,58 +169,38 @@ class BlackjackGame {
     return card;
   }
 
-  canSplit(handIndex = 0) {
-    const hand = this.state.playerHands[handIndex];
-    if (hand.cards.length !== 2 || this.state.playerHands.length >= 4) return false;
-    
-    const rank1 = hand.cards[0].rank;
-    const rank2 = hand.cards[1].rank;
-    
-    const isTen1 = ['10', 'J', 'Q', 'K'].includes(rank1);
-    const isTen2 = ['10', 'J', 'Q', 'K'].includes(rank2);
-    
-    if (isTen1 && isTen2) return true;
-    return rank1 === rank2;
+  canSplit(spotIndex, handIndex) {
+    const spot = this.state.spots[spotIndex];
+    const hand = spot.hands[handIndex];
+    if (hand.cards.length !== 2 || hand.isStood || spot.hands.length >= this.maxHandsPerSpot) return false;
+
+    const isTen = r => ['10', 'J', 'Q', 'K'].includes(r);
+    const [r1, r2] = [hand.cards[0].rank, hand.cards[1].rank];
+    return (isTen(r1) && isTen(r2)) || r1 === r2;
   }
 
-  split(handIndex) {
-    if (!this.canSplit(handIndex)) return null;
-    
-    const hand = this.state.playerHands[handIndex];
-    const card2 = hand.cards.pop();
-    
-    const newHand1 = {
-      cards: [hand.cards[0], this.drawCard()],
-      isStood: false,
-      isDoubled: false,
-      isBusted: false,
-      hasBlackjack: false,
-      isSplitAce: hand.cards[0].rank === 'A'
-    };
-    
-    const newHand2 = {
-      cards: [card2, this.drawCard()],
-      isStood: false,
-      isDoubled: false,
-      isBusted: false,
-      hasBlackjack: false,
-      isSplitAce: card2.rank === 'A'
-    };
-    
-    if (newHand1.isSplitAce) newHand1.isStood = true;
-    if (newHand2.isSplitAce) newHand2.isStood = true;
-    
-    this.state.playerHands.splice(handIndex, 1, newHand1, newHand2);
-    
-    return { hand1: newHand1.cards, hand2: newHand2.cards };
+  // Splits a pair into two hands that each carry the original bet. Split aces
+  // get one card each and stand.
+  split(spotIndex, handIndex) {
+    if (!this.canSplit(spotIndex, handIndex)) return null;
+
+    const spot = this.state.spots[spotIndex];
+    const hand = spot.hands[handIndex];
+    const [c1, c2] = hand.cards;
+    const splitAces = c1.rank === 'A';
+
+    const hand1 = this.newHand([c1, this.drawCard()], { bet: hand.bet, isSplitAce: splitAces });
+    const hand2 = this.newHand([c2, this.drawCard()], { bet: hand.bet, isSplitAce: splitAces });
+    for (const h of [hand1, hand2]) {
+      if (splitAces || this.handValue(h.cards).total === 21) h.isStood = true;
+    }
+
+    spot.hands.splice(handIndex, 1, hand1, hand2);
+    return [hand1.cards[1], hand2.cards[1]];
   }
 
-  canInsurance() {
-    return this.state.dealerCards[0].rank === 'A' && !this.state.insuranceTaken && this.state.playerHands.length === 1 && this.state.playerHands[0].cards.length === 2;
-  }
-
-  takeInsurance() {
-    this.state.insuranceTaken = true;
+  dealerHasBlackjack() {
+    return this.isBlackjack(this.state.dealerCards);
   }
 
   revealHole() {
@@ -225,13 +224,13 @@ class BlackjackGame {
     if (playerBlackjack && dealerBlackjack) return 'push';
     if (playerBlackjack) return 'blackjack';
     if (dealerBlackjack) return 'loss';
-    
+
     const pVal = this.handValue(playerCards).total;
     if (pVal > 21) return 'loss';
-    
+
     const dVal = this.handValue(dealerCards).total;
     if (dVal > 21) return 'win';
-    
+
     if (pVal > dVal) return 'win';
     if (pVal < dVal) return 'loss';
     return 'push';
@@ -246,10 +245,6 @@ class BlackjackGame {
 
   getState() {
     return this.state;
-  }
-
-  resetHand() {
-    this.state = null;
   }
 }
 window.BlackjackGame = BlackjackGame;

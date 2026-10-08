@@ -53,7 +53,7 @@
   <div id="settings-overlay" class="modal-overlay hidden">
     <div id="settings-modal" class="modal">
       <div class="modal-header">
-        <h2>⚙️ Bet Settings</h2>
+        <h2>⚙️ Settings</h2>
         <button id="close-settings-btn" class="modal-close">&times;</button>
       </div>
       <div class="modal-body">
@@ -79,13 +79,37 @@
             <span class="input-prefix">$</span>
             <input type="number" id="setting-bankroll" min="10" max="1000000" value="1000" step="10">
           </div>
-          <span class="setting-hint">Resets bankroll and session stats</span>
+          <span class="setting-hint">Changing the bankroll or bet limits starts a new session</span>
         </div>
 
         <div class="setting-divider"></div>
 
         <div class="setting-group">
-          <label>Optimal Bet Spread (Hi-Lo)</label>
+          <label for="setting-bots">Other Players at the Table</label>
+          <div class="setting-input-row">
+            <select id="setting-bots">
+              <option value="0">None (heads-up)</option>
+              <option value="1">1 player</option>
+              <option value="2">2 players</option>
+              <option value="3">3 players</option>
+              <option value="4">4 players</option>
+              <option value="5">5 players</option>
+            </select>
+          </div>
+          <span class="setting-hint">Simulated players play basic strategy. Count their cards too.</span>
+        </div>
+        <div class="setting-group">
+          <label class="setting-check">
+            <input type="checkbox" id="setting-deviations">
+            <span>Count deviations (Illustrious 18)</span>
+          </label>
+          <span class="setting-hint">The strategy advisor switches plays at Hi-Lo true-count indices, including insurance at +3</span>
+        </div>
+
+        <div class="setting-divider"></div>
+
+        <div class="setting-group">
+          <label>Optimal Bet Spread (Hi-Lo, per hand)</label>
           <div id="bet-spread-preview">
             <div class="spread-row"><span class="spread-tc">TC ≤ 1</span><span class="spread-bet" id="spread-1">$5</span><span class="spread-units">1 unit</span></div>
             <div class="spread-row"><span class="spread-tc">TC 2</span><span class="spread-bet" id="spread-2">$10</span><span class="spread-units">2 units</span></div>
@@ -127,17 +151,17 @@
 
       <!-- Player Area -->
       <div id="player-area">
-        <div id="player-hands-container">
-          <div class="hand-container active" data-hand-index="0">
-            <div class="player-cards" id="player-cards-0"></div>
-            <div class="score-badge hidden" id="player-score-0"></div>
-          </div>
-        </div>
+        <div id="player-hands-container"></div>
         <span id="player-label" class="area-label">PLAYER</span>
       </div>
 
       <!-- Betting Section (visible during betting phase) -->
       <div id="betting-section">
+        <div id="hands-toggle" role="group" aria-label="Hands per round">
+          <button data-hands="1" class="active">1 HAND</button>
+          <button data-hands="2">2 HANDS</button>
+        </div>
+
         <div id="bet-display">
           <div id="bet-chips-visual"></div>
           <div id="bet-info">

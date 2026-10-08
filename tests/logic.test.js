@@ -25,10 +25,10 @@ test('handValue handles soft and hard aces', () => {
 
 test('dealer hits soft 17 and stands on hard 17', () => {
   const g = new BlackjackGame(1);
-  g.state = { dealerCards: cards('A', '6'), playerHands: [] };
+  g.state = { dealerCards: cards('A', '6'), spots: [] };
   g.shoe = cards('10'); // next draw
   assert.equal(g.dealerPlay().length, 1);
-  g.state = { dealerCards: cards('10', '7'), playerHands: [] };
+  g.state = { dealerCards: cards('10', '7'), spots: [] };
   assert.equal(g.dealerPlay().length, 0);
 });
 
@@ -96,4 +96,93 @@ test('formatMoney', () => {
   assert.equal(formatMoney(1000), '$1,000');
   assert.equal(formatMoney(1002.5), '$1,002.50');
   assert.equal(formatMoney(0), '$0');
+});
+
+// Stacks the shoe so the next draws come out in the given order
+function stackShoe(game, ...ranks) {
+  game.shoe = cards(...ranks).reverse();
+}
+
+test('startRound deals one card per seat, dealer up, second pass, then hole', () => {
+  const g = new BlackjackGame(1);
+  stackShoe(g, '2', '3', '4', 'A', '5', '6', '7', 'K');
+  const order = g.startRound(3);
+  assert.deepEqual(Array.from(order, o => o.card.rank), ['2', '3', '4', 'A', '5', '6', '7', 'K']);
+  assert.deepEqual(Array.from(order, o => o.target === 'dealer' ? 'D' : o.spot), [0, 1, 2, 'D', 0, 1, 2, 'D']);
+  assert.equal(order[7].hole, true);
+  const spots = g.getState().spots;
+  assert.deepEqual(Array.from(spots[0].hands[0].cards, c => c.rank), ['2', '5']);
+  assert.deepEqual(Array.from(g.getState().dealerCards, c => c.rank), ['A', 'K']);
+  assert.equal(g.dealerHasBlackjack(), true);
+});
+
+test('blackjack on the deal stands automatically', () => {
+  const g = new BlackjackGame(1);
+  stackShoe(g, 'A', '9', 'K', '7');
+  g.startRound(1);
+  const hand = g.getHand(0, 0);
+  assert.equal(hand.hasBlackjack, true);
+  assert.equal(hand.isStood, true);
+});
+
+test('split keeps the bet on both hands; split aces get one card and stand', () => {
+  const g = new BlackjackGame(1);
+  stackShoe(g, '8', '9', '8', '7', '3', 'K');
+  g.startRound(1);
+  g.getHand(0, 0).bet = 25;
+  assert.equal(g.canSplit(0, 0), true);
+  g.split(0, 0);
+  const hands = g.getState().spots[0].hands;
+  assert.equal(hands.length, 2);
+  assert.deepEqual(Array.from(hands, h => h.bet), [25, 25]);
+  assert.deepEqual(Array.from(hands, h => h.cards.map(c => c.rank).join()), ['8,3', '8,K']);
+
+  const g2 = new BlackjackGame(1);
+  stackShoe(g2, 'A', '9', 'A', '7', '5', '6');
+  g2.startRound(1);
+  g2.split(0, 0);
+  assert.ok(g2.getState().spots[0].hands.every(h => h.isStood && h.isSplitAce));
+});
+
+test('two hands: stake doubles and the bankroll must cover both', () => {
+  const b = new BettingSystem(60, 5, 500);
+  b.setHands(2);
+  b.addChip(25);
+  assert.equal(b.getTotalStake(), 50);
+  assert.equal(b.addChip(25), false); // 2 x 50 would exceed 60
+  assert.equal(b.placeBet(), 25);
+  assert.equal(b.getBankroll(), 10);
+  assert.equal(b.withdraw(25), false);
+  assert.equal(b.withdraw(10), true);
+});
+
+test('Illustrious 18 deviations switch at their index', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, tc, dbl = true, spl = true) => s.getRecommendation(cards(...ranks), up, dbl, spl, tc);
+
+  assert.equal(rec(['10', '6'], 'K', -1).action, 'HIT');
+  const stand16 = rec(['10', '6'], 'K', 0);
+  assert.equal(stand16.action, 'STAND');
+  assert.equal(stand16.deviation.applied, true);
+  assert.equal(stand16.deviation.rule, '16 vs 10: stand at TC ≥ 0');
+
+  assert.equal(rec(['K', 'Q'], '6', 3.9).action, 'STAND');
+  assert.equal(rec(['K', 'Q'], '6', 4).action, 'SPLIT');
+  assert.equal(rec(['K', 'Q'], '5', 5).action, 'SPLIT');
+  assert.equal(rec(['10', '2'], '4', -0.5).action, 'HIT');
+  assert.equal(rec(['10', '3'], '2', -1.5).action, 'HIT');
+  assert.equal(rec(['5', '4'], '2', 1).action, 'DOUBLE');
+  assert.equal(rec(['6', '4'], 'A', 3).action, 'DOUBLE');
+  assert.equal(rec(['6', '4'], 'A', 2).action, 'HIT');
+  // Can't double: the deviation falls back to a hit, and isn't reported as a change
+  const noDouble = rec(['5', '6'], 'A', 0, false);
+  assert.equal(noDouble.action, 'HIT');
+  // Without a count, plain basic strategy and no deviation info
+  const basic = rec(['10', '6'], 'K', null);
+  assert.equal(basic.action, 'HIT');
+  assert.equal(basic.deviation, null);
+
+  assert.equal(s.shouldTakeInsurance(3), true);
+  assert.equal(s.shouldTakeInsurance(2.9), false);
+  assert.equal(s.shouldTakeInsurance(null), false);
 });
