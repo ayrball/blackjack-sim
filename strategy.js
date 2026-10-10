@@ -1,6 +1,7 @@
 class BasicStrategy {
   constructor() {
-    // 6-deck, dealer hits soft 17 (H17), double after split allowed (DAS)
+    // 6-deck, dealer hits soft 17 (H17), double after split allowed (DAS).
+    // Matches the Blackjack Apprenticeship H17 Deviation Chart (2018).
     // Actions: H=Hit, S=Stand, D=Double(hit if can't), Ds=Double(stand if can't), P=Split
     // Dealer upcard index: 2=0, 3=1, 4=2, 5=3, 6=4, 7=5, 8=6, 9=7, 10=8, A=9
 
@@ -67,76 +68,75 @@ class BasicStrategy {
     return rank;
   }
 
-  // Hi-Lo Illustrious 18 for 6 decks, dealer hits soft 17 (Schlesinger's list
-  // in rank order). Each entry switches from `below` to `atOrAbove` once the
-  // true count reaches `index`. The H17 values differ from S17 charts on
-  // 11 vs A (-1, S17 +1), 10 vs A (+3, S17 +4) and 12 vs 6 (-3, S17 -1).
-  // Upcards: 2-10, 11 = Ace. Insurance (take at +3) is in shouldTakeInsurance.
+  // ==================== DEVIATIONS ====================
+  // Every red index on the Blackjack Apprenticeship H17 Deviation Chart, in
+  // the chart's order. Notation follows the chart:
+  //   dir '+'  -> make `play` at that true count and above   (e.g. 4+)
+  //   dir '-'  -> make `play` at that true count and below   (e.g. -1-)
+  //   rc: true -> the chart's 0+ / 0-: any positive / negative RUNNING count
+  // Upcards: 2-10, 11 = Ace.
   static get DEVIATIONS() {
     return [
-      { type: 'hard', total: 16, up: 10, index: 0,  atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 15, up: 10, index: 4,  atOrAbove: 'S', below: 'H' },
-      { type: 'pair', pair: '10', up: 5, index: 5,  atOrAbove: 'P', below: 'S' },
-      { type: 'pair', pair: '10', up: 6, index: 4,  atOrAbove: 'P', below: 'S' },
-      { type: 'hard', total: 10, up: 10, index: 4,  atOrAbove: 'D', below: 'H' },
-      { type: 'hard', total: 12, up: 3,  index: 2,  atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 12, up: 2,  index: 3,  atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 11, up: 11, index: -1, atOrAbove: 'D', below: 'H' },
-      { type: 'hard', total: 9,  up: 2,  index: 1,  atOrAbove: 'D', below: 'H' },
-      { type: 'hard', total: 10, up: 11, index: 3,  atOrAbove: 'D', below: 'H' },
-      { type: 'hard', total: 9,  up: 7,  index: 3,  atOrAbove: 'D', below: 'H' },
-      { type: 'hard', total: 16, up: 9,  index: 5,  atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 13, up: 2,  index: -1, atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 12, up: 4,  index: 0,  atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 12, up: 5,  index: -2, atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 12, up: 6,  index: -3, atOrAbove: 'S', below: 'H' },
-      { type: 'hard', total: 13, up: 3,  index: -2, atOrAbove: 'S', below: 'H' }
+      // Pair splitting
+      { type: 'pair', pair: '10', up: 4,  index: 6,  dir: '+', play: 'P' },
+      { type: 'pair', pair: '10', up: 5,  index: 5,  dir: '+', play: 'P' },
+      { type: 'pair', pair: '10', up: 6,  index: 4,  dir: '+', play: 'P' },
+      // Soft totals
+      { type: 'soft', total: 19, up: 4,  index: 3,  dir: '+', play: 'Ds' }, // A,8
+      { type: 'soft', total: 19, up: 5,  index: 1,  dir: '+', play: 'Ds' }, // A,8
+      { type: 'soft', total: 19, up: 6,  index: 0,  dir: '-', rc: true, play: 'S' }, // A,8
+      { type: 'soft', total: 17, up: 2,  index: 1,  dir: '+', play: 'D' },  // A,6
+      // Hard totals
+      { type: 'hard', total: 16, up: 9,  index: 4,  dir: '+', play: 'S' },
+      { type: 'hard', total: 16, up: 10, index: 0,  dir: '+', rc: true, play: 'S' },
+      { type: 'hard', total: 16, up: 11, index: 3,  dir: '+', play: 'S' },
+      { type: 'hard', total: 15, up: 10, index: 4,  dir: '+', play: 'S' },
+      { type: 'hard', total: 15, up: 11, index: 5,  dir: '+', play: 'S' },
+      { type: 'hard', total: 13, up: 2,  index: -1, dir: '-', play: 'H' },
+      { type: 'hard', total: 12, up: 2,  index: 3,  dir: '+', play: 'S' },
+      { type: 'hard', total: 12, up: 3,  index: 2,  dir: '+', play: 'S' },
+      { type: 'hard', total: 12, up: 4,  index: 0,  dir: '-', rc: true, play: 'H' },
+      { type: 'hard', total: 10, up: 10, index: 4,  dir: '+', play: 'D' },
+      { type: 'hard', total: 10, up: 11, index: 3,  dir: '+', play: 'D' },
+      { type: 'hard', total: 9,  up: 2,  index: 1,  dir: '+', play: 'D' },
+      { type: 'hard', total: 9,  up: 7,  index: 3,  dir: '+', play: 'D' },
+      { type: 'hard', total: 8,  up: 6,  index: 2,  dir: '+', play: 'D' }
     ];
   }
 
+  // Insurance or even money: take at 3+
   static get INSURANCE_INDEX() { return 3; }
 
-  // Late surrender, 6D H17 basic strategy (two-card, unsplit hands only):
-  // hard 16 (not 8,8) vs 9/10/A, hard 15 vs 10/A, hard 17 vs A, 8,8 vs A.
-  // Keys: 'hard <total> v <up>' or 'pair <rank> v <up>', with A = 11.
+  // Late surrender from the chart. Basic: 17 vs A, 16 vs 9/10/A, 15 vs 10
+  // (hard, two-card hands; pairs follow the pair-splitting table).
   static get SURRENDER_BASIC() {
-    return new Set(['hard 16 v 9', 'hard 16 v 10', 'hard 16 v 11', 'hard 15 v 10',
-      'hard 15 v 11', 'hard 17 v 11', 'pair 8 v 11']);
+    return new Set(['17 v 11', '16 v 9', '16 v 10', '16 v 11', '15 v 10']);
   }
 
-  // Fab 4 surrender indices for 6D H17 Hi-Lo (plus 16 vs 8, which the same
-  // chart lists): surrender at TC >= index, otherwise play the hand out.
-  static get FAB4() {
+  // Surrender indices from the chart. play 'R' = surrender, 'N' = don't.
+  static get SURRENDER_DEVIATIONS() {
     return [
-      { total: 14, up: 10, index: 3 },
-      { total: 15, up: 9,  index: 2 },
-      { total: 15, up: 10, index: 0 },
-      { total: 15, up: 11, index: -1 },
-      { total: 16, up: 8,  index: 4 }
+      { total: 16, up: 8,  index: 4,  dir: '+', play: 'R' },
+      { total: 16, up: 9,  index: -1, dir: '-', play: 'N' },
+      { total: 15, up: 9,  index: 2,  dir: '+', play: 'R' },
+      { total: 15, up: 10, index: 0,  dir: '-', rc: true, play: 'N' },
+      { total: 15, up: 11, index: -1, dir: '+', play: 'R' }
     ];
   }
 
-  // Decides late surrender for a two-card hand. Returns { surrender, basic,
-  // dev } where dev is the Fab 4 entry for this hand (count mode only).
-  _surrenderDecision(playerCards, up, trueCount) {
-    const [c1, c2] = playerCards;
-    const p1 = this.getPairKey(c1.rank), p2 = this.getPairKey(c2.rank);
-    const val = this._handValue(playerCards);
-    const key = p1 === p2 && p1 === '8' ? `pair 8 v ${up}` : `hard ${val.total} v ${up}`;
-    if (val.soft) return { surrender: false, basic: false, dev: null };
-    // 8,8 is only surrendered against an Ace; otherwise it's split
-    if (p1 === '8' && p2 === '8' && up !== 11) return { surrender: false, basic: false, dev: null };
-
-    const basic = BasicStrategy.SURRENDER_BASIC.has(key);
-    const dev = trueCount !== null && !(p1 === p2)
-      ? BasicStrategy.FAB4.find(d => d.total === val.total && d.up === up) || null
-      : null;
-    return { surrender: dev ? trueCount >= dev.index : basic, basic, dev };
+  // Accepts null (basic strategy only), { tc, rc }, or a bare true count
+  _normCount(count) {
+    if (count === null || count === undefined) return null;
+    if (typeof count === 'number') return { tc: count, rc: count };
+    return count;
   }
 
-  describeSurrender(d) {
-    const up = d.up === 11 ? 'A' : String(d.up);
-    return `${d.total} vs ${up}: surrender at TC ≥ ${d.index > 0 ? '+' : ''}${d.index}`;
+  // Whether a deviation's index condition holds at this count
+  isActive(d, count) {
+    const c = this._normCount(count);
+    if (!c) return false;
+    if (d.rc) return d.dir === '+' ? c.rc > 0 : c.rc < 0;
+    return d.dir === '+' ? c.tc >= d.index : c.tc <= d.index;
   }
 
   // Basic strategy never insures; with deviations on, insure at TC >= +3
@@ -149,165 +149,164 @@ class BasicStrategy {
     return ['10','J','Q','K'].includes(dealerUpcard) ? 10 : parseInt(dealerUpcard);
   }
 
-  _findDeviation(match) {
-    return BasicStrategy.DEVIATIONS.find(d =>
-      d.type === match.type && d.up === match.up &&
-      (d.type === 'pair' ? d.pair === match.pair : d.total === match.total));
+  _upLabel(up) {
+    return up === 11 ? 'A' : String(up);
   }
 
-  // The basic-strategy play for a deviation's hand (H17 table)
+  _findDeviation(type, key, up) {
+    return BasicStrategy.DEVIATIONS.find(d => d.type === type && d.up === up &&
+      (type === 'pair' ? d.pair === key : d.total === key));
+  }
+
+  // The basic-strategy code for a deviation's cell
   basicPlayFor(d) {
     const di = d.up === 11 ? 9 : d.up - 2;
-    const code = d.type === 'pair' ? this.pairs[d.pair][di] : this.hard[d.total][di];
-    return code === 'Ds' ? 'D' : code;
+    if (d.type === 'pair') return this.pairs[d.pair][di];
+    if (d.type === 'soft') return this.soft[d.total][di];
+    return this.hard[d.total][di];
   }
 
-  // Describes the departure from basic strategy, e.g. "16 vs 10: stand at
-  // TC ≥ 0" or, where basic already stands, "12 vs 6: hit at TC < -3"
-  describeDeviation(d) {
-    const up = d.up === 11 ? 'A' : String(d.up);
-    const hand = d.type === 'pair' ? `${d.pair},${d.pair}` : String(d.total);
+  // Chart notation for an index: "4+", "-1-", "0+", "0-"
+  indexLabel(d) {
+    return `${d.index}${d.dir}`;
+  }
+
+  _condition(d) {
+    if (d.rc) return d.dir === '+' ? 'any positive running count' : 'any negative running count';
     const sign = d.index > 0 ? '+' : '';
-    if (this.basicPlayFor(d) === d.atOrAbove) {
-      return `${hand} vs ${up}: ${this._actionName(d.below).toLowerCase()} at TC < ${sign}${d.index}`;
-    }
-    return `${hand} vs ${up}: ${this._actionName(d.atOrAbove).toLowerCase()} at TC ≥ ${sign}${d.index}`;
+    return d.dir === '+' ? `TC ≥ ${sign}${d.index}` : `TC ≤ ${sign}${d.index}`;
   }
 
-  // Rows for the strategy panel: insurance plus the 17 playing deviations,
-  // with the basic play, the count-based play and the play at `trueCount`
-  getDeviationTable(trueCount, { surrender = false } = {}) {
+  _handLabel(d) {
+    if (d.type === 'pair') return `${d.pair},${d.pair}`;
+    if (d.type === 'soft') return `A,${d.total - 11}`;
+    return String(d.total);
+  }
+
+  // e.g. "16 vs 9: stand at TC ≥ +4", "A,8 vs 6: stand at any negative running count"
+  describeDeviation(d) {
+    return `${this._handLabel(d)} vs ${this._upLabel(d.up)}: ${this._actionName(d.play).toLowerCase()} at ${this._condition(d)}`;
+  }
+
+  describeSurrender(d) {
+    const verb = d.play === 'R' ? 'surrender' : "don't surrender";
+    return `${d.total} vs ${this._upLabel(d.up)}: ${verb} at ${this._condition(d)}`;
+  }
+
+  // Rows for the strategy panel: insurance, every chart deviation, and the
+  // surrender indices when late surrender is offered.
+  getDeviationTable(count, { surrender = false } = {}) {
+    const c = this._normCount(count) || { tc: 0, rc: 0 };
     const rows = [{
-      rank: 1, hand: 'Insurance', up: 'A', index: BasicStrategy.INSURANCE_INDEX,
-      basic: 'NO', deviation: 'YES', current: trueCount >= BasicStrategy.INSURANCE_INDEX ? 'YES' : 'NO',
-      below: false, rule: null
+      section: 'Insurance', hand: 'Insurance', up: 'A', indexText: '3+',
+      basic: 'NO', deviation: 'YES', inEffect: c.tc >= BasicStrategy.INSURANCE_INDEX, rule: null
     }];
-    BasicStrategy.DEVIATIONS.forEach((d, i) => {
-      const basic = this.basicPlayFor(d);
-      const deviation = basic === d.atOrAbove ? d.below : d.atOrAbove;
-      const current = trueCount >= d.index ? d.atOrAbove : d.below;
+    BasicStrategy.DEVIATIONS.forEach(d => {
       rows.push({
-        rank: i + 2,
-        hand: d.type === 'pair' ? `${d.pair},${d.pair}` : String(d.total),
-        up: d.up === 11 ? 'A' : String(d.up),
-        index: d.index,
-        basic: this._actionName(basic),
-        deviation: this._actionName(deviation),
-        current: this._actionName(current),
-        below: basic === d.atOrAbove, // count play applies below the index
+        section: d.type === 'pair' ? 'Pairs' : d.type === 'soft' ? 'Soft' : 'Hard',
+        hand: this._handLabel(d),
+        up: this._upLabel(d.up),
+        indexText: this.indexLabel(d),
+        basic: this._actionName(this.basicPlayFor(d)),
+        deviation: this._actionName(d.play),
+        inEffect: this.isActive(d, c),
         rule: this.describeDeviation(d)
       });
     });
-    // Fab 4 surrender plays, when late surrender is offered
     if (surrender) {
-      BasicStrategy.FAB4.forEach(d => {
-        const basicSurr = BasicStrategy.SURRENDER_BASIC.has(`hard ${d.total} v ${d.up}`);
-        const notSurr = 'HIT';
-        const current = trueCount >= d.index ? 'SURRENDER' : notSurr;
+      BasicStrategy.SURRENDER_DEVIATIONS.forEach(d => {
+        const basicSurr = BasicStrategy.SURRENDER_BASIC.has(`${d.total} v ${d.up}`);
         rows.push({
-          rank: rows.length + 1,
+          section: 'Surrender',
           hand: String(d.total),
-          up: d.up === 11 ? 'A' : String(d.up),
-          index: d.index,
-          basic: basicSurr ? 'SURRENDER' : notSurr,
-          deviation: basicSurr ? notSurr : 'SURRENDER',
-          current,
-          below: basicSurr,
-          rule: this.describeSurrender(d),
-          fab4: true
+          up: this._upLabel(d.up),
+          indexText: this.indexLabel(d),
+          basic: basicSurr ? 'SURRENDER' : 'NO SURR.',
+          deviation: d.play === 'R' ? 'SURRENDER' : 'NO SURR.',
+          inEffect: this.isActive(d, c),
+          rule: this.describeSurrender(d)
         });
       });
     }
     return rows;
   }
 
-  // Returns { action, code, deviation }. Pass a true count to apply the
-  // Illustrious 18; leave it null for plain basic strategy. `deviation` is set
-  // whenever the hand is an index play, with `applied` true when the count
-  // changes the basic-strategy action.
-  getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, trueCount = null, canSurrender = false) {
+  // Decides late surrender for a two-card, non-pair hard hand.
+  _surrenderDecision(playerCards, up, count) {
+    const [c1, c2] = playerCards;
+    const val = this._handValue(playerCards);
+    if (val.soft || this.getPairKey(c1.rank) === this.getPairKey(c2.rank)) {
+      return { surrender: false, info: null };
+    }
+    const basic = BasicStrategy.SURRENDER_BASIC.has(`${val.total} v ${up}`);
+    const dev = count
+      ? BasicStrategy.SURRENDER_DEVIATIONS.find(d => d.total === val.total && d.up === up)
+      : null;
+    let surrender = basic;
+    if (dev && this.isActive(dev, count)) surrender = dev.play === 'R';
+    return {
+      surrender,
+      info: dev ? { rule: this.describeSurrender(dev), applied: surrender !== basic } : null
+    };
+  }
+
+  // Returns { action, code, deviation }. `count` is null for plain basic
+  // strategy, or { tc, rc } (true and running count) to apply the chart's
+  // deviations. `deviation` is set whenever the hand has an index on the
+  // chart, with `applied` true when the count changes the basic play.
+  getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, count = null, canSurrender = false) {
+    count = this._normCount(count);
     const di = this.getDealerIndex(dealerUpcard);
     const up = this._upValue(dealerUpcard);
     const handVal = this._handValue(playerCards);
-    const useCount = trueCount !== null;
 
     // Late surrender comes before any other decision on the first two cards
+    let surrenderInfo = null;
     if (canSurrender && playerCards.length === 2) {
-      const sur = this._surrenderDecision(playerCards, up, trueCount);
-      const devInfo = sur.dev
-        ? { rule: this.describeSurrender(sur.dev), applied: sur.surrender !== sur.basic }
-        : null;
-      if (sur.surrender) {
-        return { action: 'SURRENDER', code: 'R', deviation: devInfo };
-      }
-      if (devInfo && devInfo.applied) {
-        // Count says keep playing a hand basic strategy would surrender
-        const rest = this.getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, trueCount, false);
-        return { ...rest, deviation: devInfo };
-      }
+      const sur = this._surrenderDecision(playerCards, up, count);
+      if (sur.surrender) return { action: 'SURRENDER', code: 'R', deviation: sur.info };
+      surrenderInfo = sur.info;
     }
 
-    // Check for pair first
-    let pairDev = null;
+    // Pairs
+    let pairInfo = null;
     if (playerCards.length === 2) {
       const r1 = this.getPairKey(playerCards[0].rank);
       const r2 = this.getPairKey(playerCards[1].rank);
       if (r1 === r2 && this.pairs[r1]) {
         const basic = this.pairs[r1][di];
-        const dev = useCount && canSplit ? this._findDeviation({ type: 'pair', pair: r1, up }) : null;
-        const pairAction = dev ? (trueCount >= dev.index ? dev.atOrAbove : dev.below) : basic;
-        if (pairAction === 'P' && canSplit) {
-          return { action: 'SPLIT', code: 'P', deviation: dev ? this._deviationInfo(dev, basic, 'P') : null };
+        const dev = count && canSplit ? this._findDeviation('pair', r1, up) : null;
+        const chosen = dev && this.isActive(dev, count) ? dev.play : basic;
+        const info = dev ? this._deviationInfo(dev, basic, chosen) : null;
+        if (chosen === 'P' && canSplit) {
+          return { action: 'SPLIT', code: 'P', deviation: info };
         }
-        // Otherwise (no split allowed or advised) play it as a hard/soft total
-        pairDev = dev;
+        // Not splitting: play it as a hard/soft total
+        pairInfo = info;
       }
     }
 
-    // Soft hand
-    if (handVal.soft && handVal.total >= 12 && handVal.total <= 21) {
-      const row = this.soft[handVal.total];
-      if (row) {
-        let action = row[di];
-        // Handle D and Ds when can't double
-        if ((action === 'D' || action === 'Ds') && !canDouble) {
-          action = action === 'Ds' ? 'S' : 'H';
-        }
-        if (action === 'D' || action === 'Ds') action = 'D';
-        return { action: this._actionName(action), code: action, deviation: null };
-      }
-    }
+    // Soft or hard total
+    const soft = handVal.soft && handVal.total >= 12 && handVal.total <= 21;
+    const total = soft ? handVal.total : Math.min(Math.max(handVal.total, 5), 21);
+    const basic = (soft ? this.soft : this.hard)[total][di];
+    const dev = count ? this._findDeviation(soft ? 'soft' : 'hard', total, up) : null;
+    const chosen = dev && this.isActive(dev, count) ? dev.play : basic;
 
-    // Hard hand
-    const total = handVal.total;
-    const hardTotal = Math.min(Math.max(total, 5), 21);
-    const row = this.hard[hardTotal];
-    if (row) {
-      const basic = row[di];
-      const dev = useCount ? this._findDeviation({ type: 'hard', total: hardTotal, up }) : null;
-      if (!dev && pairDev) {
-        // e.g. 10,10 vs 6 below its index: stand, but still show the index
-        return { action: this._actionName(basic), code: basic, deviation: { rule: this.describeDeviation(pairDev), applied: false } };
-      }
-      const chosen = dev ? (trueCount >= dev.index ? dev.atOrAbove : dev.below) : basic;
-      const action = chosen === 'D' && !canDouble ? 'H' : chosen;
-      return {
-        action: this._actionName(action),
-        code: action,
-        deviation: dev ? this._deviationInfo(dev, basic, chosen) : null
-      };
-    }
+    let code = chosen;
+    if (code === 'D' && !canDouble) code = 'H';
+    if (code === 'Ds') code = canDouble ? 'D' : 'S';
 
-    return { action: 'STAND', code: 'S', deviation: null };
+    const info = dev ? this._deviationInfo(dev, basic, chosen) : (pairInfo || surrenderInfo);
+    return { action: this._actionName(code), code, deviation: info };
   }
 
   _deviationInfo(dev, basicCode, chosenCode) {
-    const normalize = c => (c === 'Ds' ? 'D' : c);
-    return { rule: this.describeDeviation(dev), applied: normalize(basicCode) !== normalize(chosenCode) };
+    return { rule: this.describeDeviation(dev), applied: basicCode !== chosenCode };
   }
 
   _actionName(code) {
-    const names = { 'H': 'HIT', 'S': 'STAND', 'D': 'DOUBLE', 'P': 'SPLIT', 'R': 'SURRENDER' };
+    const names = { 'H': 'HIT', 'S': 'STAND', 'D': 'DOUBLE', 'Ds': 'DOUBLE', 'P': 'SPLIT', 'R': 'SURRENDER' };
     return names[code] || 'STAND';
   }
 

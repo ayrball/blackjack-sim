@@ -837,10 +837,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const canSpl = game.canSplit(spot, handIdx) && betting.getBankroll() >= hand.bet;
     const canSur = canSurrenderHand(spot, handIdx);
     const tc = counter.getTrueCount();
+    const count = { tc, rc: counter.getRunningCount() };
     const rec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl,
-      state.deviationsEnabled ? tc : null, canSur);
+      state.deviationsEnabled ? count : null, canSur);
     // Look up the deviation even in basic mode, so the panel can point at it
-    const devRec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl, tc, canSur);
+    const devRec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl, count, canSur);
 
     const val = game.handValue(hand.cards);
     const [c1, c2] = hand.cards;
@@ -933,16 +934,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderDeviationTable(tc, info) {
-    const fmtIndex = i => (i > 0 ? '+' : '') + i;
-    let html = '<thead><tr><th>#</th><th>Hand</th><th>vs</th><th>Index</th><th>Basic</th><th>Count play</th></tr></thead><tbody>';
-    strategy.getDeviationTable(tc, { surrender: state.surrenderAllowed }).forEach(row => {
-      const inEffect = row.current === row.deviation;
+    const count = { tc, rc: counter.getRunningCount() };
+    let html = '<thead><tr><th>Hand</th><th>vs</th><th>Index</th><th>Basic</th><th>Count play</th></tr></thead><tbody>';
+    let section = null;
+    strategy.getDeviationTable(count, { surrender: state.surrenderAllowed }).forEach(row => {
+      if (row.section !== section) {
+        section = row.section;
+        html += `<tr class="dev-section"><td colspan="5">${section}</td></tr>`;
+      }
       const isCurrent = (row.hand === 'Insurance' && state.awaitingInsurance) ||
         (info && row.rule && row.rule === info.devRule);
-      // e.g. "≥ +3" for 12 vs 2 (stand), "< -3" for 12 vs 6 (hit)
-      const indexText = `${row.below ? '<' : '≥'} ${fmtIndex(row.index)}`;
-      html += `<tr class="${inEffect ? 'dev-on' : ''} ${isCurrent ? 'dev-current' : ''}" title="${row.rule || 'Insurance: take at TC ≥ +3'}">` +
-        `<td>${row.rank}</td><td>${row.hand}</td><td>${row.up}</td><td>${indexText}</td>` +
+      html += `<tr class="${row.inEffect ? 'dev-on' : ''} ${isCurrent ? 'dev-current' : ''}" title="${row.rule || 'Insurance: take at TC ≥ +3'}">` +
+        `<td>${row.hand}</td><td>${row.up}</td><td class="dev-index">${row.indexText}</td>` +
         `<td>${row.basic}</td><td class="dev-play">${row.deviation}</td></tr>`;
     });
     document.getElementById('deviation-table').innerHTML = html + '</tbody>';
@@ -951,9 +954,9 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderBasicChart(info) {
     const chart = strategy.getChartData();
     const ups = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'A'];
-    // Cells that have an Illustrious 18 deviation
+    // Cells that have a deviation on the chart
     const devCells = new Set(BasicStrategy.DEVIATIONS.map(d =>
-      `${d.type === 'pair' ? 'pairs' : 'hard'}:${d.type === 'pair' ? d.pair : d.total}:${d.up === 11 ? 9 : d.up - 2}`));
+      `${d.type === 'pair' ? 'pairs' : d.type}:${d.type === 'pair' ? d.pair : d.total}:${d.up === 11 ? 9 : d.up - 2}`));
 
     const section = (title, key, rows, label) => {
       let html = `<table class="basic-table"><caption>${title}</caption><thead><tr><th></th>`;

@@ -4,7 +4,7 @@
 //   node tools/simulate.js --hands 500 --seed 7 --spread 1-12
 //   node tools/simulate.js --runs 2000          many sessions, summary stats
 //   node tools/simulate.js --flat --no-deviations   flat min bet, basic strategy
-//   node tools/simulate.js --surrender         late surrender allowed (+ Fab 4)
+//   node tools/simulate.js --surrender         late surrender allowed (with the chart's surrender indices)
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -54,36 +54,48 @@ const hiLo = rank => ('23456'.includes(rank) && rank.length === 1 ? 1 : ['10', '
 const isTen = rank => ['10', 'J', 'Q', 'K'].includes(rank);
 const cardValue = rank => (rank === 'A' ? 11 : isTen(rank) ? 10 : parseInt(rank));
 
-// Illustrious 18 for 6D H17 Hi-Lo, typed in separately from strategy.js
-// (source: blackjacktrainer.fyi/charts/deviations). dir 'up' = make `play`
-// at TC >= index; dir 'down' = make `play` at TC < index.
-const REFERENCE_I18 = {
-  'hard 16 v 10': { index: 0, play: 'STAND', dir: 'up' },
-  'hard 15 v 10': { index: 4, play: 'STAND', dir: 'up' },
-  'pair 10 v 5': { index: 5, play: 'SPLIT', dir: 'up' },
-  'pair 10 v 6': { index: 4, play: 'SPLIT', dir: 'up' },
-  'hard 10 v 10': { index: 4, play: 'DOUBLE', dir: 'up' },
-  'hard 12 v 3': { index: 2, play: 'STAND', dir: 'up' },
-  'hard 12 v 2': { index: 3, play: 'STAND', dir: 'up' },
-  'hard 11 v 11': { index: -1, play: 'HIT', dir: 'down' },
-  'hard 9 v 2': { index: 1, play: 'DOUBLE', dir: 'up' },
-  'hard 10 v 11': { index: 3, play: 'DOUBLE', dir: 'up' },
-  'hard 9 v 7': { index: 3, play: 'DOUBLE', dir: 'up' },
-  'hard 16 v 9': { index: 5, play: 'STAND', dir: 'up' },
-  'hard 13 v 2': { index: -1, play: 'HIT', dir: 'down' },
-  'hard 12 v 4': { index: 0, play: 'HIT', dir: 'down' },
-  'hard 12 v 5': { index: -2, play: 'HIT', dir: 'down' },
-  'hard 12 v 6': { index: -3, play: 'HIT', dir: 'down' },
-  'hard 13 v 3': { index: -2, play: 'HIT', dir: 'down' }
+// Blackjack Apprenticeship H17 Deviation Chart (2018), typed in separately
+// from strategy.js so the two can be checked against each other.
+// dir '+' = make `play` at that true count and above; '-' = at that true
+// count and below; rc = the chart's 0+ / 0- (positive / negative RUNNING count).
+// orElse = the play when doubling isn't possible.
+const REFERENCE_DEVIATIONS = {
+  'pair 10 v 4':  { index: 6,  dir: '+', play: 'SPLIT' },
+  'pair 10 v 5':  { index: 5,  dir: '+', play: 'SPLIT' },
+  'pair 10 v 6':  { index: 4,  dir: '+', play: 'SPLIT' },
+  'soft 19 v 4':  { index: 3,  dir: '+', play: 'DOUBLE', orElse: 'STAND' },
+  'soft 19 v 5':  { index: 1,  dir: '+', play: 'DOUBLE', orElse: 'STAND' },
+  'soft 19 v 6':  { index: 0,  dir: '-', rc: true, play: 'STAND' },
+  'soft 17 v 2':  { index: 1,  dir: '+', play: 'DOUBLE', orElse: 'HIT' },
+  'hard 16 v 9':  { index: 4,  dir: '+', play: 'STAND' },
+  'hard 16 v 10': { index: 0,  dir: '+', rc: true, play: 'STAND' },
+  'hard 16 v 11': { index: 3,  dir: '+', play: 'STAND' },
+  'hard 15 v 10': { index: 4,  dir: '+', play: 'STAND' },
+  'hard 15 v 11': { index: 5,  dir: '+', play: 'STAND' },
+  'hard 13 v 2':  { index: -1, dir: '-', play: 'HIT' },
+  'hard 12 v 2':  { index: 3,  dir: '+', play: 'STAND' },
+  'hard 12 v 3':  { index: 2,  dir: '+', play: 'STAND' },
+  'hard 12 v 4':  { index: 0,  dir: '-', rc: true, play: 'HIT' },
+  'hard 10 v 10': { index: 4,  dir: '+', play: 'DOUBLE', orElse: 'HIT' },
+  'hard 10 v 11': { index: 3,  dir: '+', play: 'DOUBLE', orElse: 'HIT' },
+  'hard 9 v 2':   { index: 1,  dir: '+', play: 'DOUBLE', orElse: 'HIT' },
+  'hard 9 v 7':   { index: 3,  dir: '+', play: 'DOUBLE', orElse: 'HIT' },
+  'hard 8 v 6':   { index: 2,  dir: '+', play: 'DOUBLE', orElse: 'HIT' }
 };
 
-// Late surrender for 6D H17, typed in separately from strategy.js
-// (sources: wizardofodds.com H17 modifications; blackjacktrainer.fyi Fab 4)
-const REFERENCE_SURRENDER_BASIC = new Set(['hard 16 v 9', 'hard 16 v 10', 'hard 16 v 11',
-  'hard 15 v 10', 'hard 15 v 11', 'hard 17 v 11', 'pair 8 v 11']);
-const REFERENCE_FAB4 = {
-  'hard 14 v 10': 3, 'hard 15 v 9': 2, 'hard 15 v 10': 0, 'hard 15 v 11': -1, 'hard 16 v 8': 4
+// Late surrender from the same chart: basic SUR cells, then the indices
+const REFERENCE_SURRENDER_BASIC = new Set(['17 v 11', '16 v 9', '16 v 10', '16 v 11', '15 v 10']);
+const REFERENCE_SURRENDER_DEV = {
+  '16 v 8':  { index: 4,  dir: '+', surrender: true },
+  '16 v 9':  { index: -1, dir: '-', surrender: false },
+  '15 v 9':  { index: 2,  dir: '+', surrender: true },
+  '15 v 10': { index: 0,  dir: '-', rc: true, surrender: false },
+  '15 v 11': { index: -1, dir: '+', surrender: true }
 };
+
+const refActive = (r, c) => (r.rc
+  ? (r.dir === '+' ? c.rc > 0 : c.rc < 0)
+  : (r.dir === '+' ? c.tc >= r.index : c.tc <= r.index));
 
 // ---------- one session ----------
 function runSession(o, seed) {
@@ -149,13 +161,13 @@ function runSession(o, seed) {
         const canD = game.canDouble(0, h) && betting.getBankroll() >= hand.bet;
         const canS = game.canSplit(0, h) && betting.getBankroll() >= hand.bet;
         const canR = o.surrender && game.canSurrender(0, h);
-        const tc = counter.getTrueCount();
-        const rec = strategy.getRecommendation(hand.cards, up, canD, canS, o.deviations ? tc : null, canR);
+        const count = { tc: counter.getTrueCount(), rc: counter.getRunningCount() };
+        const rec = strategy.getRecommendation(hand.cards, up, canD, canS, o.deviations ? count : null, canR);
 
-        if (canR && checkSurrender(s, hand, upKey, o.deviations ? tc : null, rec)) {
+        if (canR && checkSurrender(s, hand, upKey, o.deviations ? count : null, rec)) {
           // surrender decision verified; nothing else to check for this hand
         } else if (o.deviations) {
-          checkDeviation(s, strategy, hand, upKey, up, tc, canD, canS, rec);
+          checkDeviation(s, strategy, hand, upKey, up, count, canD, canS, rec);
         }
 
         if (rec.code === 'R') {
@@ -223,60 +235,64 @@ function runSession(o, seed) {
 
 // Checks a two-card decision against the reference surrender rules. Returns
 // true when the reference says surrender (so no other check applies).
-function checkSurrender(s, hand, upKey, tc, rec) {
+function checkSurrender(s, hand, upKey, count, rec) {
   const [a, b] = hand.cards;
   const pairKey = r => (isTen(r) ? '10' : r);
-  const isPair = pairKey(a.rank) === pairKey(b.rank);
-  let total = cardValue(a.rank) + cardValue(b.rank);
+  const total = cardValue(a.rank) + cardValue(b.rank);
   const soft = (a.rank === 'A' || b.rank === 'A') && total <= 21;
-  if (total === 22) total = 12; // A,A
-  if (soft) return false;
-  const key = isPair && pairKey(a.rank) === '8' ? `pair 8 v ${upKey}` : `hard ${total} v ${upKey}`;
-
-  let expected = REFERENCE_SURRENDER_BASIC.has(key);
-  if (tc !== null && !isPair && REFERENCE_FAB4[key] !== undefined) {
-    expected = tc >= REFERENCE_FAB4[key];
-    if (expected !== REFERENCE_SURRENDER_BASIC.has(key)) {
-      const d = s.deviations['surrender ' + key] || (s.deviations['surrender ' + key] = { times: 0, play: expected ? 'SURRENDER' : 'NO-SURRENDER' });
+  if (soft || pairKey(a.rank) === pairKey(b.rank)) {
+    if (rec.code === 'R') s.surrenderMismatches.push({ key: 'pair/soft', tc: count && count.tc, got: rec.action, expected: 'play on' });
+    return false;
+  }
+  const key = `${total} v ${upKey}`;
+  const basic = REFERENCE_SURRENDER_BASIC.has(key);
+  const ref = REFERENCE_SURRENDER_DEV[key];
+  let expected = basic;
+  if (count && ref && refActive(ref, count)) {
+    expected = ref.surrender;
+    if (expected !== basic) {
+      const name = 'surrender ' + key;
+      const d = s.deviations[name] || (s.deviations[name] = { times: 0, play: expected ? 'SURRENDER' : 'NO-SURRENDER' });
       d.times++;
     }
   }
   const got = rec.code === 'R';
-  if (expected || got || REFERENCE_FAB4[key] !== undefined || REFERENCE_SURRENDER_BASIC.has(key)) {
+  if (expected || got || ref || basic) {
     s.surrenderChecks++;
-    if (got !== expected) s.surrenderMismatches.push({ key, tc, got: rec.action, expected: expected ? 'SURRENDER' : 'play on' });
+    if (got !== expected) s.surrenderMismatches.push({ key, tc: count && count.tc, got: rec.action, expected: expected ? 'SURRENDER' : 'play on' });
   }
   return expected;
 }
 
-// Compares the advisor's play with the separately typed reference table
-function checkDeviation(s, strategy, hand, upKey, up, tc, canD, canS, rec) {
+// Compares the advisor's play with the separately typed reference chart
+function checkDeviation(s, strategy, hand, upKey, up, count, canD, canS, rec) {
   const total = hand.cards.reduce((t, c) => t + cardValue(c.rank), 0);
   const aces = hand.cards.filter(c => c.rank === 'A').length;
-  let hard = total, a = aces;
-  while (hard > 21 && a > 0) { hard -= 10; a--; }
+  let value = total, a = aces;
+  while (value > 21 && a > 0) { value -= 10; a--; }
   const soft = a > 0;
   const isTenPair = hand.cards.length === 2 && isTen(hand.cards[0].rank) && isTen(hand.cards[1].rank);
 
   let key = null;
-  if (isTenPair && canS && REFERENCE_I18[`pair 10 v ${upKey}`]) key = `pair 10 v ${upKey}`;
-  else if (!soft && REFERENCE_I18[`hard ${hard} v ${upKey}`]) key = `hard ${hard} v ${upKey}`;
+  if (isTenPair && canS && REFERENCE_DEVIATIONS[`pair 10 v ${upKey}`]) key = `pair 10 v ${upKey}`;
+  else if (soft && REFERENCE_DEVIATIONS[`soft ${value} v ${upKey}`]) key = `soft ${value} v ${upKey}`;
+  else if (!soft && REFERENCE_DEVIATIONS[`hard ${value} v ${upKey}`]) key = `hard ${value} v ${upKey}`;
   if (!key) return;
-  // 8,8 / 6,6 etc. are played as pairs first; only check when the pair isn't split
-  if (rec.code === 'P' && key.startsWith('hard')) return;
+  // Other pairs (e.g. 4,4 = hard 8) follow the pair table first
+  if (rec.code === 'P' && !key.startsWith('pair')) return;
 
-  const ref = REFERENCE_I18[key];
-  const deviationOn = ref.dir === 'up' ? tc >= ref.index : tc < ref.index;
+  const ref = REFERENCE_DEVIATIONS[key];
+  const on = refActive(ref, count);
   const basic = strategy.getRecommendation(hand.cards, up, canD, canS, null).action;
-  let expected = deviationOn ? ref.play : basic;
-  if (expected === 'DOUBLE' && !canD) expected = 'HIT';
+  let expected = on ? ref.play : basic;
+  if (expected === 'DOUBLE' && !canD) expected = ref.orElse || 'HIT';
   if (expected === 'SPLIT' && !canS) expected = basic;
 
   s.deviationChecks++;
   if (rec.action !== expected) {
-    s.deviationMismatches.push({ key, tc, got: rec.action, expected });
+    s.deviationMismatches.push({ key, tc: count.tc, got: rec.action, expected });
   }
-  if (deviationOn && expected !== basic) {
+  if (on && expected !== basic) {
     const d = s.deviations[key] || (s.deviations[key] = { times: 0, play: ref.play });
     d.times++;
   }
@@ -287,7 +303,7 @@ const money = v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US'
 const signed = v => (v > 0 ? '+' : '') + money(v);
 
 function printSession(o, s) {
-  console.log(`\nSESSION  seed ${s.seed} · ${s.handsPlayed} hands · ${s.shoes} shoes · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + I18 deviations' : 'basic strategy only'}${o.surrender ? ' + late surrender' + (o.deviations ? ' (Fab 4)' : '') : ''}`);
+  console.log(`\nSESSION  seed ${s.seed} · ${s.handsPlayed} hands · ${s.shoes} shoes · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + BJA H17 chart deviations' : 'basic strategy only'}${o.surrender ? ' + late surrender' : ''}`);
   console.log(`  Bankroll      ${money(o.bankroll)} -> ${money(s.finalBankroll)}   NET ${signed(s.net)}`);
   console.log(`  Wagered       ${money(s.wagered)} (avg ${money(Math.round(s.avgBet * 100) / 100)} per hand)   result ${(s.net / s.wagered * 100).toFixed(2)}% of action`);
   console.log(`  Hands         ${s.wins} won · ${s.losses} lost · ${s.pushes} pushed · ${s.blackjacks} blackjacks`);
@@ -309,7 +325,7 @@ function printSession(o, s) {
   console.log(`    Running count matched an independent Hi-Lo tally after ${s.countChecks - s.countErrors}/${s.countChecks} hands`);
   console.log(`    Cards-remaining matched the shoe after ${s.countChecks - s.cardsRemainingErrors}/${s.countChecks} hands`);
   if (o.deviations) {
-    console.log(`    Advisor matched the reference I18 table on ${s.deviationChecks - s.deviationMismatches.length}/${s.deviationChecks} index-hand decisions`);
+    console.log(`    Advisor matched the reference BJA chart on ${s.deviationChecks - s.deviationMismatches.length}/${s.deviationChecks} index-hand decisions`);
     s.deviationMismatches.slice(0, 5).forEach(m => console.log(`      MISMATCH ${m.key} at TC ${m.tc}: advisor ${m.got}, reference ${m.expected}`));
   }
   if (o.surrender) {
@@ -335,7 +351,7 @@ function printSummary(o, sessions) {
   const devChecks = sessions.reduce((t, s) => t + s.deviationChecks + s.surrenderChecks, 0);
   const hands = sessions.reduce((t, s) => t + s.handsPlayed, 0);
 
-  console.log(`\n${sessions.length} SESSIONS of ${o.hands} hands · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + I18' : 'basic only'}${o.surrender ? ' + surrender' : ''} · ${hands.toLocaleString()} hands total`);
+  console.log(`\n${sessions.length} SESSIONS of ${o.hands} hands · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + BJA chart' : 'basic only'}${o.surrender ? ' + surrender' : ''} · ${hands.toLocaleString()} hands total`);
   console.log(`  Average result  ${signed(Math.round(mean * 100) / 100)} per session (std dev ${money(Math.round(sd))})`);
   console.log(`  Overall edge    ${(totalNet / wagered * 100).toFixed(3)}% of money wagered`);
   console.log(`  Sessions ahead  ${(up / sessions.length * 100).toFixed(1)}%   busted ${(broke / sessions.length * 100).toFixed(1)}%`);

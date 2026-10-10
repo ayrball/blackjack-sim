@@ -156,66 +156,6 @@ test('two hands: stake doubles and the bankroll must cover both', () => {
   assert.equal(b.withdraw(10), true);
 });
 
-test('Illustrious 18 deviations switch at their index', () => {
-  const s = new BasicStrategy();
-  const rec = (ranks, up, tc, dbl = true, spl = true) => s.getRecommendation(cards(...ranks), up, dbl, spl, tc);
-
-  assert.equal(rec(['10', '6'], 'K', -1).action, 'HIT');
-  const stand16 = rec(['10', '6'], 'K', 0);
-  assert.equal(stand16.action, 'STAND');
-  assert.equal(stand16.deviation.applied, true);
-  assert.equal(stand16.deviation.rule, '16 vs 10: stand at TC ≥ 0');
-
-  assert.equal(rec(['K', 'Q'], '6', 3.9).action, 'STAND');
-  assert.equal(rec(['K', 'Q'], '6', 4).action, 'SPLIT');
-  assert.equal(rec(['K', 'Q'], '5', 5).action, 'SPLIT');
-  assert.equal(rec(['10', '2'], '4', -0.5).action, 'HIT');
-  assert.equal(rec(['10', '3'], '2', -1.5).action, 'HIT');
-  assert.equal(rec(['5', '4'], '2', 1).action, 'DOUBLE');
-  assert.equal(rec(['6', '4'], 'A', 3).action, 'DOUBLE');
-  assert.equal(rec(['6', '4'], 'A', 2).action, 'HIT');
-  // Can't double: the deviation falls back to a hit, and isn't reported as a change
-  const noDouble = rec(['5', '6'], 'A', 0, false);
-  assert.equal(noDouble.action, 'HIT');
-  // Without a count, plain basic strategy and no deviation info
-  const basic = rec(['10', '6'], 'K', null);
-  assert.equal(basic.action, 'HIT');
-  assert.equal(basic.deviation, null);
-
-  assert.equal(s.shouldTakeInsurance(3), true);
-  assert.equal(s.shouldTakeInsurance(2.9), false);
-  assert.equal(s.shouldTakeInsurance(null), false);
-});
-
-test('H17 index values and how they are described', () => {
-  const s = new BasicStrategy();
-  const rec = (ranks, up, tc) => s.getRecommendation(cards(...ranks), up, true, true, tc);
-  // 12 vs 6 is -3 under H17 (S17 charts list -1)
-  assert.equal(rec(['10', '2'], '6', -2).action, 'STAND');
-  assert.equal(rec(['10', '2'], '6', -3.5).action, 'HIT');
-  assert.equal(rec(['10', '2'], '6', -2).deviation.rule, '12 vs 6: hit at TC < -3');
-  assert.equal(rec(['10', '3'], '2', 0).deviation.rule, '13 vs 2: hit at TC < -1');
-  assert.equal(rec(['10', '2'], '2', 0).deviation.rule, '12 vs 2: stand at TC ≥ +3');
-});
-
-test('deviation table for the strategy panel', () => {
-  const s = new BasicStrategy();
-  const rows = s.getDeviationTable(3.2);
-  assert.equal(rows.length, 18);
-  assert.equal(rows[0].hand, 'Insurance');
-  assert.equal(rows[0].current, 'YES');
-  const r16 = rows.find(r => r.hand === '16' && r.up === '10');
-  assert.equal(r16.basic, 'HIT');
-  assert.equal(r16.deviation, 'STAND');
-  assert.equal(r16.current, 'STAND');
-  const r12v6 = rows.find(r => r.hand === '12' && r.up === '6');
-  assert.equal(r12v6.below, true);
-  assert.equal(r12v6.deviation, 'HIT');
-  assert.equal(r12v6.current, 'STAND'); // not in effect at +3.2
-  const tens = rows.find(r => r.hand === '10,10' && r.up === '5');
-  assert.equal(tens.current, 'STAND'); // needs +5
-});
-
 test('suggested bet follows the chosen spread', () => {
   const c = new CardCounter(6);
   const at = (tc, spread) => { c.getTrueCount = () => tc; return c.getSuggestedBet(5, 500, spread); };
@@ -242,25 +182,6 @@ test('setBet trims to table max and bankroll', () => {
   assert.equal(poor.setBet(20), false);
 });
 
-test('late surrender: basic H17 plays and Fab 4 indices', () => {
-  const s = new BasicStrategy();
-  const rec = (ranks, up, tc, sur = true) => s.getRecommendation(cards(...ranks), up, true, true, tc, sur).action;
-  assert.equal(rec(['10', '6'], 'K', null), 'SURRENDER');
-  assert.equal(rec(['10', '6'], 'K', null, false), 'HIT'); // rule not offered
-  assert.equal(rec(['9', '7'], '9', null), 'SURRENDER');
-  assert.equal(rec(['10', '7'], 'A', null), 'SURRENDER'); // H17 adds 17 vs A
-  assert.equal(rec(['A', '6'], 'A', null), 'HIT');        // soft 17 never surrenders
-  assert.equal(rec(['8', '8'], 'A', null), 'SURRENDER');
-  assert.equal(rec(['8', '8'], '10', null), 'SPLIT');
-  assert.equal(rec(['10', '5'], '10', -0.5), 'HIT');      // Fab 4: 15 vs 10 at 0
-  assert.equal(rec(['10', '5'], '10', 0), 'SURRENDER');
-  assert.equal(rec(['10', '4'], '10', 3), 'SURRENDER');   // 14 vs 10 at +3
-  assert.equal(rec(['9', '6'], '9', 2), 'SURRENDER');     // 15 vs 9 at +2
-  assert.equal(rec(['10', '5'], 'A', -1.5), 'HIT');       // 15 vs A at -1
-  assert.equal(rec(['10', '6'], '8', 4), 'SURRENDER');    // 16 vs 8 at +4
-  assert.equal(rec(['5', '5', '6'], 'K', 1, true), 'STAND'); // 3 cards: no surrender, I18 applies
-});
-
 test('surrender returns half the bet and only on an unsplit two-card hand', () => {
   const g = new BlackjackGame(1);
   stackShoe(g, '10', 'K', '6', '7', '5');
@@ -276,4 +197,111 @@ test('surrender returns half the bet and only on an unsplit two-card hand', () =
   g2.startRound(1);
   g2.split(0, 0);
   assert.equal(g2.canSurrender(0, 0), false);
+});
+
+// Every index on the Blackjack Apprenticeship H17 Deviation Chart. Counts are
+// { tc, rc } (true count, running count); `at` is just inside the index and
+// `off` just outside it.
+const count = (tc, rc = tc) => ({ tc, rc });
+
+test('BJA H17 chart: pair splitting', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, c) => s.getRecommendation(cards(...ranks), up, true, true, c).action;
+  assert.equal(rec(['K', 'Q'], '4', count(6)), 'SPLIT');
+  assert.equal(rec(['K', 'Q'], '4', count(5.9)), 'STAND');
+  assert.equal(rec(['K', 'Q'], '5', count(5)), 'SPLIT');
+  assert.equal(rec(['K', 'Q'], '5', count(4.9)), 'STAND');
+  assert.equal(rec(['K', 'Q'], '6', count(4)), 'SPLIT');
+  assert.equal(rec(['K', 'Q'], '6', count(3.9)), 'STAND');
+  assert.equal(rec(['K', 'Q'], '7', count(10)), 'STAND'); // no index vs 7
+  assert.equal(rec(['8', '8'], 'A', count(-5)), 'SPLIT');
+});
+
+test('BJA H17 chart: soft totals', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, c, dbl = true) => s.getRecommendation(cards(...ranks), up, dbl, false, c).action;
+  assert.equal(rec(['A', '8'], '4', count(3)), 'DOUBLE');
+  assert.equal(rec(['A', '8'], '4', count(2.9)), 'STAND');
+  assert.equal(rec(['A', '8'], '4', count(3), false), 'STAND'); // can't double: stand
+  assert.equal(rec(['A', '8'], '5', count(1)), 'DOUBLE');
+  assert.equal(rec(['A', '8'], '5', count(0.9)), 'STAND');
+  assert.equal(rec(['A', '8'], '6', count(0, 0)), 'DOUBLE');    // basic Ds
+  assert.equal(rec(['A', '8'], '6', count(-0.2, -1)), 'STAND'); // 0-: negative running count
+  assert.equal(rec(['A', '6'], '2', count(1)), 'DOUBLE');
+  assert.equal(rec(['A', '6'], '2', count(0.9)), 'HIT');
+  assert.equal(rec(['A', '6'], '2', count(1), false), 'HIT');   // can't double: hit
+});
+
+test('BJA H17 chart: hard totals', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, c) => s.getRecommendation(cards(...ranks), up, true, false, c).action;
+  assert.equal(rec(['10', '6'], '9', count(4)), 'STAND');
+  assert.equal(rec(['10', '6'], '9', count(3.9)), 'HIT');
+  assert.equal(rec(['10', '6'], 'K', count(0.2, 1)), 'STAND'); // 0+: positive running count
+  assert.equal(rec(['10', '6'], 'K', count(0, 0)), 'HIT');
+  assert.equal(rec(['10', '6'], 'A', count(3)), 'STAND');
+  assert.equal(rec(['10', '6'], 'A', count(2.9)), 'HIT');
+  assert.equal(rec(['10', '5'], 'K', count(4)), 'STAND');
+  assert.equal(rec(['10', '5'], 'A', count(5)), 'STAND');
+  assert.equal(rec(['10', '5'], 'A', count(4.9)), 'HIT');
+  assert.equal(rec(['10', '3'], '2', count(-1)), 'HIT');        // -1-: at -1 and below
+  assert.equal(rec(['10', '3'], '2', count(-0.9)), 'STAND');
+  assert.equal(rec(['10', '2'], '2', count(3)), 'STAND');
+  assert.equal(rec(['10', '2'], '3', count(2)), 'STAND');
+  assert.equal(rec(['10', '2'], '4', count(-0.2, -1)), 'HIT');  // 0-
+  assert.equal(rec(['10', '2'], '4', count(0, 0)), 'STAND');
+  assert.equal(rec(['6', '4'], 'K', count(4)), 'DOUBLE');
+  assert.equal(rec(['6', '4'], 'A', count(3)), 'DOUBLE');
+  assert.equal(rec(['5', '4'], '2', count(1)), 'DOUBLE');
+  assert.equal(rec(['5', '4'], '7', count(3)), 'DOUBLE');
+  assert.equal(rec(['5', '3'], '6', count(2)), 'DOUBLE');
+  assert.equal(rec(['5', '3'], '6', count(1.9)), 'HIT');
+  // Not on the chart, so plain basic strategy at any count
+  assert.equal(rec(['6', '5'], 'A', count(-5)), 'DOUBLE');
+  assert.equal(rec(['10', '2'], '6', count(-5)), 'STAND');
+  assert.equal(rec(['10', '2'], '5', count(-5)), 'STAND');
+  assert.equal(rec(['10', '3'], '3', count(-5)), 'STAND');
+  // Basic strategy mode ignores the count
+  assert.equal(rec(['10', '6'], 'K', null), 'HIT');
+});
+
+test('BJA H17 chart: late surrender', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, c) => s.getRecommendation(cards(...ranks), up, true, true, c, true).action;
+  assert.equal(rec(['10', '7'], 'A', null), 'SURRENDER');
+  assert.equal(rec(['10', '6'], '10', null), 'SURRENDER');
+  assert.equal(rec(['10', '6'], 'A', null), 'SURRENDER');
+  assert.equal(rec(['10', '6'], '9', null), 'SURRENDER');
+  assert.equal(rec(['10', '6'], '9', count(-1)), 'HIT');        // -1-: don't surrender
+  assert.equal(rec(['10', '6'], '8', count(4)), 'SURRENDER');
+  assert.equal(rec(['10', '6'], '8', count(3.9)), 'HIT');
+  assert.equal(rec(['10', '5'], '10', null), 'SURRENDER');
+  assert.equal(rec(['10', '5'], '10', count(-0.2, -1)), 'HIT'); // 0-: don't surrender
+  assert.equal(rec(['10', '5'], '9', count(2)), 'SURRENDER');
+  assert.equal(rec(['10', '5'], 'A', null), 'HIT');             // blank cell in basic
+  assert.equal(rec(['10', '5'], 'A', count(-1)), 'SURRENDER');  // -1+
+  assert.equal(rec(['10', '5'], 'A', count(-1.1)), 'HIT');
+  assert.equal(rec(['10', '4'], '10', count(10)), 'HIT');       // 14 never surrenders
+  assert.equal(rec(['8', '8'], 'A', null), 'SPLIT');            // pairs split
+  assert.equal(rec(['A', '6'], 'A', null), 'HIT');              // soft hands don't surrender
+  assert.equal(rec(['5', '5', '6'], 'A', count(3)), 'STAND');   // 3 cards: 16 vs A stand at 3+
+});
+
+test('strategy panel lists every chart deviation in chart notation', () => {
+  const s = new BasicStrategy();
+  const rows = s.getDeviationTable(count(3.2, 16));
+  assert.equal(rows.length, 22); // insurance + 21 playing deviations
+  assert.equal(rows[0].hand, 'Insurance');
+  assert.equal(rows[0].inEffect, true);
+  const row = (hand, up) => rows.find(r => r.hand === hand && r.up === up);
+  assert.equal(row('16', '10').indexText, '0+');
+  assert.equal(row('16', '10').inEffect, true);
+  assert.equal(row('13', '2').indexText, '-1-');
+  assert.equal(row('13', '2').inEffect, false);
+  assert.equal(row('A,8', '4').indexText, '3+');
+  assert.equal(row('A,8', '4').deviation, 'DOUBLE');
+  assert.equal(row('10,10', '4').inEffect, false);
+  assert.equal(s.getDeviationTable(count(0), { surrender: true }).length, 27);
+  assert.equal(s.describeDeviation(BasicStrategy.DEVIATIONS.find(d => d.total === 19 && d.up === 6)),
+    'A,8 vs 6: stand at any negative running count');
 });

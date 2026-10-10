@@ -1514,3 +1514,15 @@ h1, h2, h3, .title-suit, #game-message {
 /* ==================== SURRENDER ==================== */
 .action-btn.surrender { background: linear-gradient(135deg, #95a5a6, #6c7a7d); }
 #strategy-advisor.recommend-surrender #strategy-advisor-action { color: #bdc3c7; }
+
+/* Section headings in the deviation table */
+.strategy-table tr.dev-section td {
+  padding-top: 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--panel-border);
+}
+.strategy-table .dev-index { color: #ff7b72; font-weight: 700; }
