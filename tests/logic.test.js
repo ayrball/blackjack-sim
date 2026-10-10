@@ -241,3 +241,39 @@ test('setBet trims to table max and bankroll', () => {
   const poor = new BettingSystem(4, 5, 500);
   assert.equal(poor.setBet(20), false);
 });
+
+test('late surrender: basic H17 plays and Fab 4 indices', () => {
+  const s = new BasicStrategy();
+  const rec = (ranks, up, tc, sur = true) => s.getRecommendation(cards(...ranks), up, true, true, tc, sur).action;
+  assert.equal(rec(['10', '6'], 'K', null), 'SURRENDER');
+  assert.equal(rec(['10', '6'], 'K', null, false), 'HIT'); // rule not offered
+  assert.equal(rec(['9', '7'], '9', null), 'SURRENDER');
+  assert.equal(rec(['10', '7'], 'A', null), 'SURRENDER'); // H17 adds 17 vs A
+  assert.equal(rec(['A', '6'], 'A', null), 'HIT');        // soft 17 never surrenders
+  assert.equal(rec(['8', '8'], 'A', null), 'SURRENDER');
+  assert.equal(rec(['8', '8'], '10', null), 'SPLIT');
+  assert.equal(rec(['10', '5'], '10', -0.5), 'HIT');      // Fab 4: 15 vs 10 at 0
+  assert.equal(rec(['10', '5'], '10', 0), 'SURRENDER');
+  assert.equal(rec(['10', '4'], '10', 3), 'SURRENDER');   // 14 vs 10 at +3
+  assert.equal(rec(['9', '6'], '9', 2), 'SURRENDER');     // 15 vs 9 at +2
+  assert.equal(rec(['10', '5'], 'A', -1.5), 'HIT');       // 15 vs A at -1
+  assert.equal(rec(['10', '6'], '8', 4), 'SURRENDER');    // 16 vs 8 at +4
+  assert.equal(rec(['5', '5', '6'], 'K', 1, true), 'STAND'); // 3 cards: no surrender, I18 applies
+});
+
+test('surrender returns half the bet and only on an unsplit two-card hand', () => {
+  const g = new BlackjackGame(1);
+  stackShoe(g, '10', 'K', '6', '7', '5');
+  g.startRound(1);
+  assert.equal(g.canSurrender(0, 0), true);
+  assert.equal(g.surrender(0, 0), true);
+  const hand = g.getHand(0, 0);
+  assert.equal(g.getHandResult(hand.cards, g.getState().dealerCards, false, false, hand.surrendered), 'surrender');
+  assert.equal(g.getPayoutMultiplier('surrender'), 0.5);
+
+  const g2 = new BlackjackGame(1);
+  stackShoe(g2, '8', '9', '8', '7', '3', 'K');
+  g2.startRound(1);
+  g2.split(0, 0);
+  assert.equal(g2.canSurrender(0, 0), false);
+});

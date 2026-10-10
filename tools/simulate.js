@@ -4,6 +4,7 @@
 //   node tools/simulate.js --hands 500 --seed 7 --spread 1-12
 //   node tools/simulate.js --runs 2000          many sessions, summary stats
 //   node tools/simulate.js --flat --no-deviations   flat min bet, basic strategy
+//   node tools/simulate.js --surrender         late surrender allowed (+ Fab 4)
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
@@ -24,6 +25,7 @@ const options = {
   bankroll: parseInt(opt('bankroll', '1000')),
   deviations: !args.includes('--no-deviations'),
   flat: args.includes('--flat'),
+  surrender: args.includes('--surrender'),
   json: args.includes('--json')
 };
 
@@ -75,6 +77,14 @@ const REFERENCE_I18 = {
   'hard 13 v 3': { index: -2, play: 'HIT', dir: 'down' }
 };
 
+// Late surrender for 6D H17, typed in separately from strategy.js
+// (sources: wizardofodds.com H17 modifications; blackjacktrainer.fyi Fab 4)
+const REFERENCE_SURRENDER_BASIC = new Set(['hard 16 v 9', 'hard 16 v 10', 'hard 16 v 11',
+  'hard 15 v 10', 'hard 15 v 11', 'hard 17 v 11', 'pair 8 v 11']);
+const REFERENCE_FAB4 = {
+  'hard 14 v 10': 3, 'hard 15 v 9': 2, 'hard 15 v 10': 0, 'hard 15 v 11': -1, 'hard 16 v 8': 4
+};
+
 // ---------- one session ----------
 function runSession(o, seed) {
   const W = loadModules(seed);
@@ -90,6 +100,7 @@ function runSession(o, seed) {
     betsByTier: {}, netByTcBucket: {},
     insurance: { taken: 0, won: 0, net: 0 },
     deviations: {}, deviationChecks: 0, deviationMismatches: [],
+    surrenders: 0, surrenderChecks: 0, surrenderMismatches: [],
     countChecks: 0, countErrors: 0, cardsRemainingErrors: 0
   };
   let shadowRC = 0; // independent Hi-Lo running count
@@ -137,12 +148,20 @@ function runSession(o, seed) {
         const hand = hands[h];
         const canD = game.canDouble(0, h) && betting.getBankroll() >= hand.bet;
         const canS = game.canSplit(0, h) && betting.getBankroll() >= hand.bet;
+        const canR = o.surrender && game.canSurrender(0, h);
         const tc = counter.getTrueCount();
-        const rec = strategy.getRecommendation(hand.cards, up, canD, canS, o.deviations ? tc : null);
+        const rec = strategy.getRecommendation(hand.cards, up, canD, canS, o.deviations ? tc : null, canR);
 
-        if (o.deviations) checkDeviation(s, strategy, hand, upKey, up, tc, canD, canS, rec);
+        if (canR && checkSurrender(s, hand, upKey, o.deviations ? tc : null, rec)) {
+          // surrender decision verified; nothing else to check for this hand
+        } else if (o.deviations) {
+          checkDeviation(s, strategy, hand, upKey, up, tc, canD, canS, rec);
+        }
 
-        if (rec.code === 'P') {
+        if (rec.code === 'R') {
+          game.surrender(0, h);
+          s.surrenders++;
+        } else if (rec.code === 'P') {
           betting.withdraw(hand.bet); staked += hand.bet;
           game.split(0, h).forEach(see);
         } else if (rec.code === 'D') {
@@ -156,7 +175,7 @@ function runSession(o, seed) {
         }
       }
       see(game.revealHole());
-      const anyLive = gs.spots[0].hands.some(x => !x.isBusted && !x.hasBlackjack);
+      const anyLive = gs.spots[0].hands.some(x => !x.isBusted && !x.hasBlackjack && !x.surrendered);
       if (anyLive) game.dealerPlay().forEach(see);
     }
 
@@ -164,7 +183,7 @@ function runSession(o, seed) {
     let payout = 0;
     let outcome = 'push';
     for (const hand of gs.spots[0].hands) {
-      const res = game.getHandResult(hand.cards, gs.dealerCards, hand.hasBlackjack, dealerBJ);
+      const res = game.getHandResult(hand.cards, gs.dealerCards, hand.hasBlackjack, dealerBJ, hand.surrendered);
       payout += hand.bet * game.getPayoutMultiplier(res);
       if (res === 'blackjack') s.blackjacks++;
     }
@@ -200,6 +219,34 @@ function runSession(o, seed) {
   s.net = s.finalBankroll - o.bankroll;
   s.avgBet = s.handsPlayed ? s.wagered / s.handsPlayed : 0;
   return s;
+}
+
+// Checks a two-card decision against the reference surrender rules. Returns
+// true when the reference says surrender (so no other check applies).
+function checkSurrender(s, hand, upKey, tc, rec) {
+  const [a, b] = hand.cards;
+  const pairKey = r => (isTen(r) ? '10' : r);
+  const isPair = pairKey(a.rank) === pairKey(b.rank);
+  let total = cardValue(a.rank) + cardValue(b.rank);
+  const soft = (a.rank === 'A' || b.rank === 'A') && total <= 21;
+  if (total === 22) total = 12; // A,A
+  if (soft) return false;
+  const key = isPair && pairKey(a.rank) === '8' ? `pair 8 v ${upKey}` : `hard ${total} v ${upKey}`;
+
+  let expected = REFERENCE_SURRENDER_BASIC.has(key);
+  if (tc !== null && !isPair && REFERENCE_FAB4[key] !== undefined) {
+    expected = tc >= REFERENCE_FAB4[key];
+    if (expected !== REFERENCE_SURRENDER_BASIC.has(key)) {
+      const d = s.deviations['surrender ' + key] || (s.deviations['surrender ' + key] = { times: 0, play: expected ? 'SURRENDER' : 'NO-SURRENDER' });
+      d.times++;
+    }
+  }
+  const got = rec.code === 'R';
+  if (expected || got || REFERENCE_FAB4[key] !== undefined || REFERENCE_SURRENDER_BASIC.has(key)) {
+    s.surrenderChecks++;
+    if (got !== expected) s.surrenderMismatches.push({ key, tc, got: rec.action, expected: expected ? 'SURRENDER' : 'play on' });
+  }
+  return expected;
 }
 
 // Compares the advisor's play with the separately typed reference table
@@ -240,7 +287,7 @@ const money = v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US'
 const signed = v => (v > 0 ? '+' : '') + money(v);
 
 function printSession(o, s) {
-  console.log(`\nSESSION  seed ${s.seed} · ${s.handsPlayed} hands · ${s.shoes} shoes · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + I18 deviations' : 'basic strategy only'}`);
+  console.log(`\nSESSION  seed ${s.seed} · ${s.handsPlayed} hands · ${s.shoes} shoes · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + I18 deviations' : 'basic strategy only'}${o.surrender ? ' + late surrender' + (o.deviations ? ' (Fab 4)' : '') : ''}`);
   console.log(`  Bankroll      ${money(o.bankroll)} -> ${money(s.finalBankroll)}   NET ${signed(s.net)}`);
   console.log(`  Wagered       ${money(s.wagered)} (avg ${money(Math.round(s.avgBet * 100) / 100)} per hand)   result ${(s.net / s.wagered * 100).toFixed(2)}% of action`);
   console.log(`  Hands         ${s.wins} won · ${s.losses} lost · ${s.pushes} pushed · ${s.blackjacks} blackjacks`);
@@ -257,12 +304,17 @@ function printSession(o, s) {
     console.log(`  Deviations    ${devs.reduce((t, [, d]) => t + d.times, 0)} count-based plays made: ` +
       (devs.map(([k, d]) => `${k.replace('hard ', '').replace(' v 11', ' v A')} ${d.play.toLowerCase()} x${d.times}`).join(', ') || 'none'));
   }
+  if (o.surrender) console.log(`  Surrender     ${s.surrenders} hands surrendered`);
   console.log('  CHECKS');
   console.log(`    Running count matched an independent Hi-Lo tally after ${s.countChecks - s.countErrors}/${s.countChecks} hands`);
   console.log(`    Cards-remaining matched the shoe after ${s.countChecks - s.cardsRemainingErrors}/${s.countChecks} hands`);
   if (o.deviations) {
     console.log(`    Advisor matched the reference I18 table on ${s.deviationChecks - s.deviationMismatches.length}/${s.deviationChecks} index-hand decisions`);
     s.deviationMismatches.slice(0, 5).forEach(m => console.log(`      MISMATCH ${m.key} at TC ${m.tc}: advisor ${m.got}, reference ${m.expected}`));
+  }
+  if (o.surrender) {
+    console.log(`    Surrender decisions matched the reference rules on ${s.surrenderChecks - s.surrenderMismatches.length}/${s.surrenderChecks} surrender-eligible hands`);
+    s.surrenderMismatches.slice(0, 5).forEach(m => console.log(`      MISMATCH ${m.key} at TC ${m.tc}: advisor ${m.got}, reference ${m.expected}`));
   }
 }
 
@@ -279,11 +331,11 @@ function printSummary(o, sessions) {
   const broke = sessions.filter(s => s.brokeAtHand !== null).length;
   const sd = Math.sqrt(nets.reduce((t, v) => t + (v - mean) ** 2, 0) / nets.length);
   const countErrors = sessions.reduce((t, s) => t + s.countErrors, 0);
-  const devMismatch = sessions.reduce((t, s) => t + s.deviationMismatches.length, 0);
-  const devChecks = sessions.reduce((t, s) => t + s.deviationChecks, 0);
+  const devMismatch = sessions.reduce((t, s) => t + s.deviationMismatches.length + s.surrenderMismatches.length, 0);
+  const devChecks = sessions.reduce((t, s) => t + s.deviationChecks + s.surrenderChecks, 0);
   const hands = sessions.reduce((t, s) => t + s.handsPlayed, 0);
 
-  console.log(`\n${sessions.length} SESSIONS of ${o.hands} hands · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + I18' : 'basic only'} · ${hands.toLocaleString()} hands total`);
+  console.log(`\n${sessions.length} SESSIONS of ${o.hands} hands · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + I18' : 'basic only'}${o.surrender ? ' + surrender' : ''} · ${hands.toLocaleString()} hands total`);
   console.log(`  Average result  ${signed(Math.round(mean * 100) / 100)} per session (std dev ${money(Math.round(sd))})`);
   console.log(`  Overall edge    ${(totalNet / wagered * 100).toFixed(3)}% of money wagered`);
   console.log(`  Sessions ahead  ${(up / sessions.length * 100).toFixed(1)}%   busted ${(broke / sessions.length * 100).toFixed(1)}%`);

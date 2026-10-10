@@ -96,6 +96,49 @@ class BasicStrategy {
 
   static get INSURANCE_INDEX() { return 3; }
 
+  // Late surrender, 6D H17 basic strategy (two-card, unsplit hands only):
+  // hard 16 (not 8,8) vs 9/10/A, hard 15 vs 10/A, hard 17 vs A, 8,8 vs A.
+  // Keys: 'hard <total> v <up>' or 'pair <rank> v <up>', with A = 11.
+  static get SURRENDER_BASIC() {
+    return new Set(['hard 16 v 9', 'hard 16 v 10', 'hard 16 v 11', 'hard 15 v 10',
+      'hard 15 v 11', 'hard 17 v 11', 'pair 8 v 11']);
+  }
+
+  // Fab 4 surrender indices for 6D H17 Hi-Lo (plus 16 vs 8, which the same
+  // chart lists): surrender at TC >= index, otherwise play the hand out.
+  static get FAB4() {
+    return [
+      { total: 14, up: 10, index: 3 },
+      { total: 15, up: 9,  index: 2 },
+      { total: 15, up: 10, index: 0 },
+      { total: 15, up: 11, index: -1 },
+      { total: 16, up: 8,  index: 4 }
+    ];
+  }
+
+  // Decides late surrender for a two-card hand. Returns { surrender, basic,
+  // dev } where dev is the Fab 4 entry for this hand (count mode only).
+  _surrenderDecision(playerCards, up, trueCount) {
+    const [c1, c2] = playerCards;
+    const p1 = this.getPairKey(c1.rank), p2 = this.getPairKey(c2.rank);
+    const val = this._handValue(playerCards);
+    const key = p1 === p2 && p1 === '8' ? `pair 8 v ${up}` : `hard ${val.total} v ${up}`;
+    if (val.soft) return { surrender: false, basic: false, dev: null };
+    // 8,8 is only surrendered against an Ace; otherwise it's split
+    if (p1 === '8' && p2 === '8' && up !== 11) return { surrender: false, basic: false, dev: null };
+
+    const basic = BasicStrategy.SURRENDER_BASIC.has(key);
+    const dev = trueCount !== null && !(p1 === p2)
+      ? BasicStrategy.FAB4.find(d => d.total === val.total && d.up === up) || null
+      : null;
+    return { surrender: dev ? trueCount >= dev.index : basic, basic, dev };
+  }
+
+  describeSurrender(d) {
+    const up = d.up === 11 ? 'A' : String(d.up);
+    return `${d.total} vs ${up}: surrender at TC ≥ ${d.index > 0 ? '+' : ''}${d.index}`;
+  }
+
   // Basic strategy never insures; with deviations on, insure at TC >= +3
   shouldTakeInsurance(trueCount = null) {
     return trueCount !== null && trueCount >= BasicStrategy.INSURANCE_INDEX;
@@ -133,7 +176,7 @@ class BasicStrategy {
 
   // Rows for the strategy panel: insurance plus the 17 playing deviations,
   // with the basic play, the count-based play and the play at `trueCount`
-  getDeviationTable(trueCount) {
+  getDeviationTable(trueCount, { surrender = false } = {}) {
     const rows = [{
       rank: 1, hand: 'Insurance', up: 'A', index: BasicStrategy.INSURANCE_INDEX,
       basic: 'NO', deviation: 'YES', current: trueCount >= BasicStrategy.INSURANCE_INDEX ? 'YES' : 'NO',
@@ -155,6 +198,26 @@ class BasicStrategy {
         rule: this.describeDeviation(d)
       });
     });
+    // Fab 4 surrender plays, when late surrender is offered
+    if (surrender) {
+      BasicStrategy.FAB4.forEach(d => {
+        const basicSurr = BasicStrategy.SURRENDER_BASIC.has(`hard ${d.total} v ${d.up}`);
+        const notSurr = 'HIT';
+        const current = trueCount >= d.index ? 'SURRENDER' : notSurr;
+        rows.push({
+          rank: rows.length + 1,
+          hand: String(d.total),
+          up: d.up === 11 ? 'A' : String(d.up),
+          index: d.index,
+          basic: basicSurr ? 'SURRENDER' : notSurr,
+          deviation: basicSurr ? notSurr : 'SURRENDER',
+          current,
+          below: basicSurr,
+          rule: this.describeSurrender(d),
+          fab4: true
+        });
+      });
+    }
     return rows;
   }
 
@@ -162,11 +225,27 @@ class BasicStrategy {
   // Illustrious 18; leave it null for plain basic strategy. `deviation` is set
   // whenever the hand is an index play, with `applied` true when the count
   // changes the basic-strategy action.
-  getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, trueCount = null) {
+  getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, trueCount = null, canSurrender = false) {
     const di = this.getDealerIndex(dealerUpcard);
     const up = this._upValue(dealerUpcard);
     const handVal = this._handValue(playerCards);
     const useCount = trueCount !== null;
+
+    // Late surrender comes before any other decision on the first two cards
+    if (canSurrender && playerCards.length === 2) {
+      const sur = this._surrenderDecision(playerCards, up, trueCount);
+      const devInfo = sur.dev
+        ? { rule: this.describeSurrender(sur.dev), applied: sur.surrender !== sur.basic }
+        : null;
+      if (sur.surrender) {
+        return { action: 'SURRENDER', code: 'R', deviation: devInfo };
+      }
+      if (devInfo && devInfo.applied) {
+        // Count says keep playing a hand basic strategy would surrender
+        const rest = this.getRecommendation(playerCards, dealerUpcard, canDouble, canSplit, trueCount, false);
+        return { ...rest, deviation: devInfo };
+      }
+    }
 
     // Check for pair first
     let pairDev = null;
@@ -228,7 +307,7 @@ class BasicStrategy {
   }
 
   _actionName(code) {
-    const names = { 'H': 'HIT', 'S': 'STAND', 'D': 'DOUBLE', 'P': 'SPLIT' };
+    const names = { 'H': 'HIT', 'S': 'STAND', 'D': 'DOUBLE', 'P': 'SPLIT', 'R': 'SURRENDER' };
     return names[code] || 'STAND';
   }
 

@@ -56,6 +56,7 @@ class BlackjackGame {
       isBusted: false,
       hasBlackjack: false,
       isSplitAce: false,
+      surrendered: false,
       result: null,
       ...extra
     };
@@ -169,6 +170,21 @@ class BlackjackGame {
     return card;
   }
 
+  // Late surrender: first two cards of an unsplit hand, after the dealer peeks
+  canSurrender(spotIndex, handIndex) {
+    const spot = this.state.spots[spotIndex];
+    const hand = spot.hands[handIndex];
+    return spot.hands.length === 1 && hand.cards.length === 2 && !hand.isStood;
+  }
+
+  surrender(spotIndex, handIndex) {
+    if (!this.canSurrender(spotIndex, handIndex)) return false;
+    const hand = this.getHand(spotIndex, handIndex);
+    hand.surrendered = true;
+    hand.isStood = true;
+    return true;
+  }
+
   canSplit(spotIndex, handIndex) {
     const spot = this.state.spots[spotIndex];
     const hand = spot.hands[handIndex];
@@ -220,7 +236,8 @@ class BlackjackGame {
     return newCards;
   }
 
-  getHandResult(playerCards, dealerCards, playerBlackjack, dealerBlackjack) {
+  getHandResult(playerCards, dealerCards, playerBlackjack, dealerBlackjack, surrendered = false) {
+    if (surrendered) return 'surrender';
     if (playerBlackjack && dealerBlackjack) return 'push';
     if (playerBlackjack) return 'blackjack';
     if (dealerBlackjack) return 'loss';
@@ -240,6 +257,7 @@ class BlackjackGame {
     if (result === 'blackjack') return 2.5;
     if (result === 'win') return 2;
     if (result === 'push') return 1;
+    if (result === 'surrender') return 0.5;
     return 0;
   }
 

@@ -1510,3 +1510,7 @@ h1, h2, h3, .title-suit, #game-message {
 @media (max-width: 600px) {
   #bet-actions { flex-wrap: wrap; justify-content: center; }
 }
+
+/* ==================== SURRENDER ==================== */
+.action-btn.surrender { background: linear-gradient(135deg, #95a5a6, #6c7a7d); }
+#strategy-advisor.recommend-surrender #strategy-advisor-action { color: #bdc3c7; }

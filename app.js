@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     numBots: 0,         // simulated players sharing the table
     spread: '1-12',     // suggested-bet ramp (see CardCounter.SPREADS)
     autoBet: false,     // stage the suggested bet at the start of each round
+    surrenderAllowed: false, // late surrender table rule
     deviationsEnabled: true, // advisor applies the Illustrious 18
     strategyTab: 'deviations'
   };
@@ -147,6 +148,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (canPlayHand()) playerDouble();
     });
 
+    document.getElementById('btn-surrender').addEventListener('click', () => {
+      if (canPlayHand()) playerSurrender();
+    });
+
     document.getElementById('btn-split').addEventListener('click', () => {
       if (canPlayHand()) playerSplit();
     });
@@ -217,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('setting-bots').value = state.numBots;
       document.getElementById('setting-spread').value = state.spread;
       document.getElementById('setting-auto-bet').checked = state.autoBet;
+      document.getElementById('setting-surrender').checked = state.surrenderAllowed;
       updateBetSpreadPreview();
       document.getElementById('settings-overlay').classList.remove('hidden');
     });
@@ -250,6 +256,10 @@ document.addEventListener('DOMContentLoaded', () => {
       state.numBots = newBots;
       state.spread = document.getElementById('setting-spread').value;
       state.autoBet = document.getElementById('setting-auto-bet').checked;
+      state.surrenderAllowed = document.getElementById('setting-surrender').checked;
+      document.getElementById('btn-surrender').classList.toggle('hidden', !state.surrenderAllowed);
+      document.getElementById('strategy-rules-badge').textContent = '6D · H17 · DAS' + (state.surrenderAllowed ? ' · LS' : '');
+      renderStrategyPanel();
 
       const moneyChanged = newMin !== state.minBet || newMax !== state.maxBet || newBankroll !== state.startingBankroll;
       if (moneyChanged) {
@@ -378,7 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Ignore input until the next turn starts, so a quick click can't act twice
   function lockActions() {
     state.actionLock = true;
-    ['btn-hit', 'btn-stand', 'btn-double', 'btn-split'].forEach(id => {
+    ['btn-hit', 'btn-stand', 'btn-double', 'btn-split', 'btn-surrender'].forEach(id => {
       document.getElementById(id).disabled = true;
     });
     updateStrategyAdvisor();
@@ -395,9 +405,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const { spot, hand } = state.turn;
     const h = game.getHand(spot, hand);
     const upcard = game.getState().dealerCards[0].rank;
-    const rec = strategy.getRecommendation(h.cards, upcard, game.canDouble(spot, hand), game.canSplit(spot, hand));
+    const rec = strategy.getRecommendation(h.cards, upcard, game.canDouble(spot, hand), game.canSplit(spot, hand),
+      null, canSurrenderHand(spot, hand));
 
-    if (rec.code === 'P') {
+    if (rec.code === 'R') {
+      game.surrender(spot, hand);
+    } else if (rec.code === 'P') {
       showCards(...game.split(spot, hand));
     } else if (rec.code === 'D') {
       showCards(game.double(spot, hand));
@@ -537,6 +550,17 @@ document.addEventListener('DOMContentLoaded', () => {
     afterPlayerAction();
   }
 
+  function canSurrenderHand(spot, hand) {
+    return state.surrenderAllowed && game.canSurrender(spot, hand);
+  }
+
+  function playerSurrender() {
+    const { spot, hand } = state.turn;
+    if (!canSurrenderHand(spot, hand)) return;
+    game.surrender(spot, hand);
+    afterPlayerAction();
+  }
+
   function playerSplit() {
     const { spot, hand } = state.turn;
     const h = currentHand();
@@ -564,7 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // The dealer only draws if some hand at the table is still live
     const anyLive = game.getState().spots.some(spot =>
-      spot.hands.some(h => !h.isBusted && !h.hasBlackjack));
+      spot.hands.some(h => !h.isBusted && !h.hasBlackjack && !h.surrendered));
     if (!anyLive) {
       setTimeout(resolveGame, 500);
       return;
@@ -607,7 +631,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const handMsgs = [];
     gs.spots.forEach((spot, s) => {
       spot.hands.forEach(hand => {
-        const res = game.getHandResult(hand.cards, gs.dealerCards, hand.hasBlackjack, dealerBJ);
+        const res = game.getHandResult(hand.cards, gs.dealerCards, hand.hasBlackjack, dealerBJ, hand.surrendered);
         hand.result = res;
         if (!isMine(s)) return;
 
@@ -617,11 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (res === 'blackjack') { hasBJ = true; hasWin = true; }
         else if (res === 'win') { hasWin = true; }
-        else if (res === 'loss') { hasLoss = true; }
+        else if (res === 'loss' || res === 'surrender') { hasLoss = true; }
 
         if (res === 'blackjack') handMsgs.push(`Blackjack! +${formatMoney(payout - hand.bet)}`);
         else if (res === 'win') handMsgs.push(`Win +${formatMoney(payout - hand.bet)}`);
         else if (res === 'push') handMsgs.push('Push');
+        else if (res === 'surrender') handMsgs.push(`Surrender -${formatMoney(hand.bet / 2)}`);
         else handMsgs.push(hand.isBusted ? 'Bust' : 'Loss');
       });
     });
@@ -757,7 +782,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const badge = document.createElement('div');
       const res = hand.result;
       if (res) {
-        const text = { blackjack: 'BJ', win: 'Win', push: 'Push', loss: hand.isBusted ? 'Bust' : 'Lose' }[res];
+        const text = { blackjack: 'BJ', win: 'Win', push: 'Push', surrender: 'Surr', loss: hand.isBusted ? 'Bust' : 'Lose' }[res];
         badge.textContent = text;
         badge.className = `score-badge ${res === 'loss' ? 'loss' : res === 'push' ? 'push' : 'win'}`;
       } else if (hand.isBusted) {
@@ -794,6 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
     set('btn-stand', myTurn && !hand.isStood);
     set('btn-double', myTurn && game.canDouble(state.turn.spot, state.turn.hand) && bankroll >= hand.bet);
     set('btn-split', myTurn && game.canSplit(state.turn.spot, state.turn.hand) && bankroll >= hand.bet);
+    set('btn-surrender', myTurn && canSurrenderHand(state.turn.spot, state.turn.hand));
     set('btn-insurance', waiting && bankroll >= insuranceCost());
 
     document.getElementById('btn-insurance').classList.toggle('hidden', !waiting);
@@ -809,11 +835,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const dealerUpcard = game.getState().dealerCards[0].rank;
     const canDbl = game.canDouble(spot, handIdx) && betting.getBankroll() >= hand.bet;
     const canSpl = game.canSplit(spot, handIdx) && betting.getBankroll() >= hand.bet;
+    const canSur = canSurrenderHand(spot, handIdx);
     const tc = counter.getTrueCount();
     const rec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl,
-      state.deviationsEnabled ? tc : null);
+      state.deviationsEnabled ? tc : null, canSur);
     // Look up the deviation even in basic mode, so the panel can point at it
-    const devRec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl, tc);
+    const devRec = strategy.getRecommendation(hand.cards, dealerUpcard, canDbl, canSpl, tc, canSur);
 
     const val = game.handValue(hand.cards);
     const [c1, c2] = hand.cards;
@@ -908,7 +935,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderDeviationTable(tc, info) {
     const fmtIndex = i => (i > 0 ? '+' : '') + i;
     let html = '<thead><tr><th>#</th><th>Hand</th><th>vs</th><th>Index</th><th>Basic</th><th>Count play</th></tr></thead><tbody>';
-    strategy.getDeviationTable(tc).forEach(row => {
+    strategy.getDeviationTable(tc, { surrender: state.surrenderAllowed }).forEach(row => {
       const inEffect = row.current === row.deviation;
       const isCurrent = (row.hand === 'Insurance' && state.awaitingInsurance) ||
         (info && row.rule && row.rule === info.devRule);
