@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     startingBankroll: 1000,
     numHands: 1,        // your hands per round (1 or 2)
     numBots: 0,         // simulated players sharing the table
+    spread: '1-12',     // suggested-bet ramp (see CardCounter.SPREADS)
+    autoBet: false,     // stage the suggested bet at the start of each round
     deviationsEnabled: true, // advisor applies the Illustrious 18
     strategyTab: 'deviations'
   };
@@ -118,6 +120,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
+    document.getElementById('suggested-bet-btn').addEventListener('click', () => {
+      if (state.phase !== 'betting') return;
+      if (stageSuggestedBet()) {
+        updateBetDisplay();
+      } else {
+        flashMessage('Not enough bankroll for the minimum bet');
+      }
+    });
+
     document.getElementById('deal-btn').addEventListener('click', () => {
       if (state.phase === 'betting' && betting.isBetValid()) {
         startRound();
@@ -204,6 +215,8 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('setting-max-bet').value = state.maxBet;
       document.getElementById('setting-bankroll').value = state.startingBankroll;
       document.getElementById('setting-bots').value = state.numBots;
+      document.getElementById('setting-spread').value = state.spread;
+      document.getElementById('setting-auto-bet').checked = state.autoBet;
       updateBetSpreadPreview();
       document.getElementById('settings-overlay').classList.remove('hidden');
     });
@@ -221,6 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Live preview of bet spread when min/max inputs change
     document.getElementById('setting-min-bet').addEventListener('input', updateBetSpreadPreview);
     document.getElementById('setting-max-bet').addEventListener('input', updateBetSpreadPreview);
+    document.getElementById('setting-spread').addEventListener('change', updateBetSpreadPreview);
 
     document.getElementById('settings-save-btn').addEventListener('click', () => {
       if (!requireBettingPhase()) {
@@ -232,8 +246,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const newBankroll = Math.max(newMin, parseInt(document.getElementById('setting-bankroll').value) || 1000);
       const newBots = Math.min(MAX_BOTS, Math.max(0, parseInt(document.getElementById('setting-bots').value) || 0));
 
-      // The table option applies straight away; only bankroll/limit changes reset the session
+      // Table and betting options apply straight away; only bankroll/limit changes reset the session
       state.numBots = newBots;
+      state.spread = document.getElementById('setting-spread').value;
+      state.autoBet = document.getElementById('setting-auto-bet').checked;
 
       const moneyChanged = newMin !== state.minBet || newMax !== state.maxBet || newBankroll !== state.startingBankroll;
       if (moneyChanged) {
@@ -255,6 +271,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       document.getElementById('settings-overlay').classList.add('hidden');
+      updateCountingPanel();
+      if (state.autoBet) stageSuggestedBet();
+      updateBetDisplay();
       flashMessage(moneyChanged ? 'Settings Applied: New Session' : 'Settings Applied');
     });
   }
@@ -638,6 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
       setPhase('betting');
       betting.clearBet();
+      if (state.autoBet) stageSuggestedBet();
       updateBetDisplay();
       hideMessage();
       if (betting.getBankroll() < state.minBet) {
@@ -991,8 +1011,9 @@ document.addEventListener('DOMContentLoaded', () => {
     elDecksRemaining.textContent = counter.getDecksRemaining().toFixed(1);
     elDeckPenetration.textContent = counter.getPenetration() + '%';
 
-    const suggested = counter.getSuggestedBet(state.minBet, state.maxBet);
+    const suggested = suggestedBet();
     elSuggestedBet.textContent = formatMoney(suggested);
+    document.getElementById('suggested-bet-btn-amount').textContent = formatMoney(suggested);
 
     const edge = counter.getPlayerEdge();
     elPlayerEdge.textContent = (edge > 0 ? '+' : '') + edge.toFixed(2) + '%';
@@ -1002,15 +1023,23 @@ document.addEventListener('DOMContentLoaded', () => {
     renderStrategyPanel();
   }
 
+  // Per-hand bet the count suggests for the chosen spread
+  function suggestedBet() {
+    return counter.getSuggestedBet(state.minBet, state.maxBet, state.spread);
+  }
+
+  function stageSuggestedBet() {
+    return betting.setBet(suggestedBet());
+  }
+
   function updateBetSpreadPreview() {
     const min = Math.max(1, parseInt(document.getElementById('setting-min-bet').value) || 5);
     const max = Math.max(min, parseInt(document.getElementById('setting-max-bet').value) || 500);
-    const spread = counter.getBetSpread(min, max);
-    const ids = ['spread-1', 'spread-2', 'spread-3', 'spread-4', 'spread-5'];
-    spread.forEach((s, i) => {
-      const el = document.getElementById(ids[i]);
-      if (el) el.textContent = formatMoney(s.bet);
-    });
+    const spread = counter.getBetSpread(min, max, document.getElementById('setting-spread').value);
+    document.getElementById('bet-spread-preview').innerHTML = spread.map(s =>
+      `<div class="spread-row"><span class="spread-tc">TC ${s.tc}</span>` +
+      `<span class="spread-bet">${formatMoney(s.bet)}</span>` +
+      `<span class="spread-units">${s.units} unit${s.units === 1 ? '' : 's'}</span></div>`).join('');
   }
 
   function updateShoeIndicator() {

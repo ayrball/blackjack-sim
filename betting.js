@@ -41,6 +41,16 @@ class BettingSystem {
     this.stagedBet = 0;
   }
 
+  // Stage a specific per-hand bet (e.g. the count's suggestion), trimmed to
+  // the table max and to what the bankroll covers across all hands
+  setBet(amount) {
+    const affordable = Math.floor(this.bankroll / this.hands);
+    const bet = Math.min(amount, this.maxBet, affordable);
+    if (bet < this.minBet) return false;
+    this.stagedBet = bet;
+    return true;
+  }
+
   repeatBet() {
     if (this.lastBet * this.hands > this.bankroll) return false;
     this.stagedBet = this.lastBet;

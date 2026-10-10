@@ -50,27 +50,33 @@ class CardCounter {
     return Math.round((this.cardsDealt / total) * 100);
   }
 
-  getSuggestedBet(minBet = 5, maxBet = 500) {
+  // Bet ramps in units of the table minimum, by whole true count:
+  // TC ≤ 1, 2, 3, 4, ≥ 5. Wider spreads earn more but swing harder.
+  static get SPREADS() {
+    return {
+      '1-4':  { label: '1–4 (conservative)', units: [1, 2, 3, 4, 4] },
+      '1-8':  { label: '1–8 (moderate)',     units: [1, 2, 4, 6, 8] },
+      '1-12': { label: '1–12 (standard)',    units: [1, 2, 4, 8, 12] },
+      '1-16': { label: '1–16 (aggressive)',  units: [1, 4, 8, 12, 16] }
+    };
+  }
+
+  _spreadTier() {
     // Bet by whole true count (floored), matching the spread shown in settings
     const tc = Math.floor(this.getTrueCount());
-    let bet;
-    if (tc <= 1) bet = minBet;
-    else if (tc < 3) bet = minBet * 2;
-    else if (tc < 4) bet = minBet * 4;
-    else if (tc < 5) bet = minBet * 8;
-    else bet = minBet * 12;
-    return Math.min(bet, maxBet);
+    return Math.min(Math.max(tc - 1, 0), 4);
+  }
+
+  getSuggestedBet(minBet = 5, maxBet = 500, spread = '1-12') {
+    const units = (CardCounter.SPREADS[spread] || CardCounter.SPREADS['1-12']).units;
+    return Math.min(minBet * units[this._spreadTier()], maxBet);
   }
 
   // Returns the full bet spread for display in settings
-  getBetSpread(minBet = 5, maxBet = 500) {
-    return [
-      { tc: '≤ 1', units: 1, bet: Math.min(minBet, maxBet) },
-      { tc: '2', units: 2, bet: Math.min(minBet * 2, maxBet) },
-      { tc: '3', units: 4, bet: Math.min(minBet * 4, maxBet) },
-      { tc: '4', units: 8, bet: Math.min(minBet * 8, maxBet) },
-      { tc: '≥ 5', units: 12, bet: Math.min(minBet * 12, maxBet) },
-    ];
+  getBetSpread(minBet = 5, maxBet = 500, spread = '1-12') {
+    const units = (CardCounter.SPREADS[spread] || CardCounter.SPREADS['1-12']).units;
+    const labels = ['≤ 1', '2', '3', '4', '≥ 5'];
+    return units.map((u, i) => ({ tc: labels[i], units: u, bet: Math.min(minBet * u, maxBet) }));
   }
 
   getPlayerEdge() {

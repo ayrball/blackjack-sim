@@ -215,3 +215,29 @@ test('deviation table for the strategy panel', () => {
   const tens = rows.find(r => r.hand === '10,10' && r.up === '5');
   assert.equal(tens.current, 'STAND'); // needs +5
 });
+
+test('suggested bet follows the chosen spread', () => {
+  const c = new CardCounter(6);
+  const at = (tc, spread) => { c.getTrueCount = () => tc; return c.getSuggestedBet(5, 500, spread); };
+  assert.equal(at(0, '1-12'), 5);
+  assert.equal(at(3.4, '1-12'), 20);
+  assert.equal(at(6, '1-12'), 60);
+  assert.equal(at(3, '1-4'), 15);
+  assert.equal(at(9, '1-4'), 20);
+  assert.equal(at(4, '1-8'), 30);
+  assert.equal(at(2, '1-16'), 20);
+  assert.equal(at(5, '1-16'), 80);
+  assert.equal(at(-4, '1-16'), 5);
+  assert.deepEqual(Array.from(c.getBetSpread(10, 500, '1-8'), r => r.bet), [10, 20, 40, 60, 80]);
+});
+
+test('setBet trims to table max and bankroll', () => {
+  const b = new BettingSystem(100, 5, 50);
+  assert.equal(b.setBet(80), true);
+  assert.equal(b.getCurrentBet(), 50); // table max
+  b.setHands(2);
+  assert.equal(b.setBet(80), true);
+  assert.equal(b.getCurrentBet(), 50); // 2 x 50 = bankroll
+  const poor = new BettingSystem(4, 5, 500);
+  assert.equal(poor.setBet(20), false);
+});

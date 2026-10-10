@@ -1495,3 +1495,18 @@ h1, h2, h3, .title-suit, #game-message {
 @media (max-width: 600px) {
   #strategy-panel { width: 100%; min-width: 0; }
 }
+
+/* ==================== SUGGESTED BET ==================== */
+.bet-btn.suggested {
+  border: 1px solid var(--accent-gold);
+  color: var(--accent-gold);
+  background: rgba(212, 168, 67, 0.1);
+}
+
+.bet-btn.suggested:hover { background: rgba(212, 168, 67, 0.22); }
+
+#suggested-bet-btn-amount { font-weight: 700; }
+
+@media (max-width: 600px) {
+  #bet-actions { flex-wrap: wrap; justify-content: center; }
+}

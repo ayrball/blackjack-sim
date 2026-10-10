@@ -102,7 +102,16 @@
         <div class="setting-divider"></div>
 
         <div class="setting-group">
-          <label>Optimal Bet Spread (Hi-Lo, per hand)</label>
+          <label for="setting-spread">Suggested Bet Spread (Hi-Lo, per hand)</label>
+          <div class="setting-input-row">
+            <select id="setting-spread">
+              <option value="1-4">1–4 units (conservative)</option>
+              <option value="1-8">1–8 units (moderate)</option>
+              <option value="1-12" selected>1–12 units (standard)</option>
+              <option value="1-16">1–16 units (aggressive)</option>
+            </select>
+          </div>
+          <span class="setting-hint">One unit is the minimum bet. Wider spreads win more at high counts but swing harder.</span>
           <div id="bet-spread-preview">
             <div class="spread-row"><span class="spread-tc">TC ≤ 1</span><span class="spread-bet" id="spread-1">$5</span><span class="spread-units">1 unit</span></div>
             <div class="spread-row"><span class="spread-tc">TC 2</span><span class="spread-bet" id="spread-2">$10</span><span class="spread-units">2 units</span></div>
@@ -110,6 +119,13 @@
             <div class="spread-row"><span class="spread-tc">TC 4</span><span class="spread-bet" id="spread-4">$40</span><span class="spread-units">8 units</span></div>
             <div class="spread-row"><span class="spread-tc">TC ≥ 5</span><span class="spread-bet" id="spread-5">$60</span><span class="spread-units">12 units</span></div>
           </div>
+        </div>
+        <div class="setting-group">
+          <label class="setting-check">
+            <input type="checkbox" id="setting-auto-bet">
+            <span>Auto-bet the suggested amount each round</span>
+          </label>
+          <span class="setting-hint">Stages the count-based bet for you; you can still change it before dealing.</span>
         </div>
       </div>
       <div class="modal-footer">
@@ -218,6 +234,7 @@
         <div id="bet-actions">
           <button id="clear-bet-btn" class="bet-btn">CLEAR</button>
           <button id="repeat-bet-btn" class="bet-btn">REPEAT</button>
+          <button id="suggested-bet-btn" class="bet-btn suggested" title="Bet the amount the count suggests">SUGGESTED <span id="suggested-bet-btn-amount">$5</span></button>
           <button id="deal-btn" class="bet-btn primary">DEAL</button>
         </div>
       </div>
