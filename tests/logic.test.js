@@ -305,3 +305,19 @@ test('strategy panel lists every chart deviation in chart notation', () => {
   assert.equal(s.describeDeviation(BasicStrategy.DEVIATIONS.find(d => d.total === 19 && d.up === 6)),
     'A,8 vs 6: stand at any negative running count');
 });
+
+test('cut card sets when the shoe is reshuffled', () => {
+  const g = new BlackjackGame(6);
+  assert.equal(g.getCutCards(), 78);              // default 1.5 decks
+  assert.equal(Math.round(g.getPenetration() * 100), 75);
+  g.shoe.length = 78;
+  assert.equal(g.needsShuffle(), false);
+  g.shoe.length = 77;
+  assert.equal(g.needsShuffle(), true);
+  g.setCutDecks(1);
+  assert.equal(g.getCutCards(), 52);
+  assert.equal(g.needsShuffle(), false);          // 77 left > 52
+  assert.equal(Math.round(g.getPenetration() * 100), 83);
+  g.setCutDecks(10);                              // clamped to leave at least half a deck dealt
+  assert.equal(g.cutDecks, 5.5);
+});

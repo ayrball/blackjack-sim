@@ -6,6 +6,7 @@ class BlackjackGame {
     this.ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
     this.suits = ['hearts', 'diamonds', 'clubs', 'spades'];
     this.maxHandsPerSpot = 4;
+    this.cutDecks = 1.5; // cut card: reshuffle when fewer decks than this are left
     this.state = null;
     this.initShoe();
   }
@@ -29,9 +30,22 @@ class BlackjackGame {
     }
   }
 
+  // Cut card position, in decks left behind it (1.5 of 6 decks = 75% penetration)
+  setCutDecks(decks) {
+    this.cutDecks = Math.min(Math.max(decks, 0.25), this.numDecks - 0.5);
+  }
+
+  getCutCards() {
+    return Math.round(this.cutDecks * 52);
+  }
+
+  getPenetration() {
+    return 1 - this.cutDecks / this.numDecks;
+  }
+
+  // Checked before each round; a round in progress always finishes
   needsShuffle() {
-    const totalCards = this.getTotalCards();
-    return this.shoe.length < totalCards * 0.25;
+    return this.shoe.length < this.getCutCards();
   }
 
   drawCard() {

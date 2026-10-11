@@ -1526,3 +1526,23 @@ h1, h2, h3, .title-suit, #game-message {
   border-bottom: 1px solid var(--panel-border);
 }
 .strategy-table .dev-index { color: #ff7b72; font-weight: 700; }
+
+/* ==================== CUT CARD ==================== */
+#shoe-bar {
+  position: relative;
+  overflow: visible;
+}
+
+#shoe-progress { border-radius: 2px; }
+
+/* Red marker where the cut card sits; the shoe is reshuffled once the bar passes it */
+#shoe-cut {
+  position: absolute;
+  top: -4px;
+  width: 3px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--loss-crimson);
+  box-shadow: 0 0 6px rgba(231, 76, 60, 0.7);
+}

@@ -4,6 +4,7 @@
 //   node tools/simulate.js --hands 500 --seed 7 --spread 1-12
 //   node tools/simulate.js --runs 2000          many sessions, summary stats
 //   node tools/simulate.js --flat --no-deviations   flat min bet, basic strategy
+//   node tools/simulate.js --cut 1           cut card 1 deck from the back (default 1.5)
 //   node tools/simulate.js --surrender         late surrender allowed (with the chart's surrender indices)
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,6 +27,7 @@ const options = {
   deviations: !args.includes('--no-deviations'),
   flat: args.includes('--flat'),
   surrender: args.includes('--surrender'),
+  cutDecks: parseFloat(opt('cut', '1.5')),
   json: args.includes('--json')
 };
 
@@ -101,6 +103,7 @@ const refActive = (r, c) => (r.rc
 function runSession(o, seed) {
   const W = loadModules(seed);
   const game = new W.BlackjackGame(6);
+  game.setCutDecks(o.cutDecks);
   const counter = new W.CardCounter(6);
   const strategy = new W.BasicStrategy();
   const betting = new W.BettingSystem(o.bankroll, o.minBet, o.maxBet);
@@ -303,7 +306,7 @@ const money = v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US'
 const signed = v => (v > 0 ? '+' : '') + money(v);
 
 function printSession(o, s) {
-  console.log(`\nSESSION  seed ${s.seed} · ${s.handsPlayed} hands · ${s.shoes} shoes · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + BJA H17 chart deviations' : 'basic strategy only'}${o.surrender ? ' + late surrender' : ''}`);
+  console.log(`\nSESSION  seed ${s.seed} · ${s.handsPlayed} hands · ${s.shoes} shoes · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + BJA H17 chart deviations' : 'basic strategy only'}${o.surrender ? ' + late surrender' : ''} · cut ${o.cutDecks} decks`);
   console.log(`  Bankroll      ${money(o.bankroll)} -> ${money(s.finalBankroll)}   NET ${signed(s.net)}`);
   console.log(`  Wagered       ${money(s.wagered)} (avg ${money(Math.round(s.avgBet * 100) / 100)} per hand)   result ${(s.net / s.wagered * 100).toFixed(2)}% of action`);
   console.log(`  Hands         ${s.wins} won · ${s.losses} lost · ${s.pushes} pushed · ${s.blackjacks} blackjacks`);
@@ -351,7 +354,7 @@ function printSummary(o, sessions) {
   const devChecks = sessions.reduce((t, s) => t + s.deviationChecks + s.surrenderChecks, 0);
   const hands = sessions.reduce((t, s) => t + s.handsPlayed, 0);
 
-  console.log(`\n${sessions.length} SESSIONS of ${o.hands} hands · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + BJA chart' : 'basic only'}${o.surrender ? ' + surrender' : ''} · ${hands.toLocaleString()} hands total`);
+  console.log(`\n${sessions.length} SESSIONS of ${o.hands} hands · spread ${o.flat ? 'flat' : o.spread} · ${o.deviations ? 'basic + BJA chart' : 'basic only'}${o.surrender ? ' + surrender' : ''} · cut ${o.cutDecks} decks · ${hands.toLocaleString()} hands total`);
   console.log(`  Average result  ${signed(Math.round(mean * 100) / 100)} per session (std dev ${money(Math.round(sd))})`);
   console.log(`  Overall edge    ${(totalNet / wagered * 100).toFixed(3)}% of money wagered`);
   console.log(`  Sessions ahead  ${(up / sessions.length * 100).toFixed(1)}%   busted ${(broke / sessions.length * 100).toFixed(1)}%`);

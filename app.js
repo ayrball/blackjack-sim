@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startingBankroll: 1000,
     numHands: 1,        // your hands per round (1 or 2)
     numBots: 0,         // simulated players sharing the table
+    cutDecks: 1.5,      // cut card: decks left behind it (75% penetration)
     spread: '1-12',     // suggested-bet ramp (see CardCounter.SPREADS)
     autoBet: false,     // stage the suggested bet at the start of each round
     surrenderAllowed: false, // late surrender table rule
@@ -220,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('setting-max-bet').value = state.maxBet;
       document.getElementById('setting-bankroll').value = state.startingBankroll;
       document.getElementById('setting-bots').value = state.numBots;
+      document.getElementById('setting-cut').value = String(state.cutDecks);
       document.getElementById('setting-spread').value = state.spread;
       document.getElementById('setting-auto-bet').checked = state.autoBet;
       document.getElementById('setting-surrender').checked = state.surrenderAllowed;
@@ -254,6 +256,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Table and betting options apply straight away; only bankroll/limit changes reset the session
       state.numBots = newBots;
+      // New cut card takes effect from the next round's shuffle check
+      state.cutDecks = parseFloat(document.getElementById('setting-cut').value) || 1.5;
+      game.setCutDecks(state.cutDecks);
+      updateShoeIndicator();
       state.spread = document.getElementById('setting-spread').value;
       state.autoBet = document.getElementById('setting-auto-bet').checked;
       state.surrenderAllowed = document.getElementById('setting-surrender').checked;
@@ -1077,7 +1083,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const remaining = game.getShoeSize();
     const pct = (remaining / total) * 100;
     elShoeProgress.style.width = pct + '%';
-    elShoeLabel.textContent = `Shoe: ${remaining} cards`;
+    // Cut card marker: the shoe is reshuffled once the bar passes it
+    document.getElementById('shoe-cut').style.left = (game.getCutCards() / total * 100) + '%';
+    elShoeLabel.textContent = `Shoe: ${remaining} cards · cut card at ${game.getCutCards()} (${Math.round(game.getPenetration() * 100)}% pen.)`;
   }
 
   function populateCardGrid() {

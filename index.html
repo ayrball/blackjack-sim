@@ -85,6 +85,19 @@
         <div class="setting-divider"></div>
 
         <div class="setting-group">
+          <label for="setting-cut">Deck Penetration (cut card)</label>
+          <div class="setting-input-row">
+            <select id="setting-cut">
+              <option value="2">2 decks cut off · 67% dealt (poor)</option>
+              <option value="1.5" selected>1.5 decks cut off · 75% dealt (typical)</option>
+              <option value="1.25">1.25 decks cut off · 79% dealt</option>
+              <option value="1">1 deck cut off · 83% dealt (good)</option>
+              <option value="0.5">0.5 deck cut off · 92% dealt (rare)</option>
+            </select>
+          </div>
+          <span class="setting-hint">The shoe is reshuffled before the next round once the cut card comes out. Deeper penetration means more high counts.</span>
+        </div>
+        <div class="setting-group">
           <label for="setting-bots">Other Players at the Table</label>
           <div class="setting-input-row">
             <select id="setting-bots">
@@ -185,6 +198,7 @@
       <div id="shoe-indicator">
         <div id="shoe-bar">
           <div id="shoe-progress"></div>
+          <div id="shoe-cut" title="Cut card"></div>
         </div>
         <span id="shoe-label">Shoe: 312 cards</span>
       </div>
